@@ -30,14 +30,17 @@ type MyPeriod = {
   type: string
   startDate: string
   endDate: string
-  questions: { id: string }[]
+  // /assessment/my returns a count only — question bodies are loaded per
+  // period via /assessment/my/:id. Never read p.questions here.
+  totalQuestions: number
   mySubmission: {
     id: string
     answeredCount: number
-    totalQuestions: number
     updatedAt: string
   } | null
 }
+
+const totalOf = (p: MyPeriod) => p.totalQuestions ?? 0
 
 function getGreeting() {
   const h = new Date().getHours()
@@ -76,11 +79,11 @@ export default function StaffDashboardPage() {
   const completed = periods.filter(
     (p) =>
       p.mySubmission &&
-      p.mySubmission.answeredCount === p.questions.length &&
-      p.questions.length > 0
+      totalOf(p) > 0 &&
+      p.mySubmission.answeredCount >= totalOf(p)
   )
   const inProgress = periods.filter(
-    (p) => p.mySubmission && p.mySubmission.answeredCount < p.questions.length
+    (p) => p.mySubmission && p.mySubmission.answeredCount < totalOf(p)
   )
   const notStarted = periods.filter((p) => !p.mySubmission)
 
@@ -192,10 +195,11 @@ export default function StaffDashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {periods?.map((p) => {
               const sub = p.mySubmission
-              const total = p.questions.length
+              const total = totalOf(p)
               const answered = sub?.answeredCount ?? 0
-              const pct = total > 0 ? Math.round((answered / total) * 100) : 0
-              const isComplete = answered === total && total > 0
+              const pct =
+                total > 0 ? Math.min(100, Math.round((answered / total) * 100)) : 0
+              const isComplete = total > 0 && answered >= total
               const isExpiringSoon =
                 !isPast(new Date(p.endDate)) &&
                 new Date(p.endDate).getTime() - Date.now() < 24 * 60 * 60 * 1000
