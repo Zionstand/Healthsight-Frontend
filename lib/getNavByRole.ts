@@ -1,8 +1,17 @@
 import { User } from "@/store/useAuth"
 import { adminNavLinks, healthStaffNavLinks } from "@/constants/nav-links"
 import { roleNavMap } from "@/constants/roleNavMap"
+import { IconChartBar } from "@tabler/icons-react"
+
+// Every staff role can see the Power BI assessment report.
+const analyticsLink = { label: "Assessment Analysis", slug: "/analytics", icon: IconChartBar }
 
 export function getNavByRole(user?: User | null) {
+  const links = staffNav(user)
+  return user?.roles?.some((r) => r.name === "ADMIN") ? links : [...links, analyticsLink]
+}
+
+function staffNav(user?: User | null) {
   if (!user) return healthStaffNavLinks
 
   const role = user.role ?? user.roles?.[0]?.name

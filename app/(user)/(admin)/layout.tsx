@@ -17,6 +17,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title"
 // so per-page metadata exports aren't available here).
 const ADMIN_TITLES: Record<string, string> = {
   "/admin/dashboard": "Admin Dashboard",
+  "/admin/analytics": "Assessment Analysis",
   "/admin/users": "User Management",
   "/admin/pending-users": "Pending Approvals",
   "/admin/phcs": "PHCs",

@@ -13,6 +13,7 @@ import {
   IconChevronRight,
   IconLogout,
   IconBadge,
+  IconChartBar,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -44,6 +45,7 @@ import api from "@/lib/api"
 
 const managementLinks = [
   { label: "Dashboard", href: "/admin/dashboard", icon: IconLayoutDashboard },
+  { label: "Assessment Analysis", href: "/admin/analytics", icon: IconChartBar },
   { label: "Users", href: "/admin/users", icon: IconUsers },
   { label: "Roles", href: "/admin/roles", icon: IconShield },
   { label: "PHCs", href: "/admin/phcs", icon: IconBuildingHospital },

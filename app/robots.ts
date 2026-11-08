@@ -14,6 +14,7 @@ export default function robots(): MetadataRoute.Robots {
         "/appointments",
         "/assessment",
         "/reports",
+        "/analytics",
         "/screenings",
         "/volunteers",
         "/dividers",
