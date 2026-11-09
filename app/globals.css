@@ -244,12 +244,12 @@
 }
 
 @theme inline {
-    --font-sans: var(--font-sans);
-    --font-display: var(--font-display);
-    --font-heading: var(--font-heading);
-    --font-ui: var(--font-ui);
-    --font-accent: var(--font-accent);
-    --font-mono: var(--font-mono);
+    --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+    --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+    --font-heading: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+    --font-ui: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+    --font-accent: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
 
     /* Brand scales → utilities (e.g. bg-brand-sky-600, text-brand-charcoal-800) */
     --color-brand-sky-50: var(--brand-sky-50);
@@ -445,7 +445,7 @@
 .ProseMirror em { font-style: italic; }
 .ProseMirror s { text-decoration: line-through; }
 .ProseMirror code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-outfit), sans-serif;
   font-size: 0.875em;
   background: oklch(0 0 0 / 8%);
   border-radius: 0.25rem;
@@ -518,7 +518,7 @@
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
   overflow-x: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-outfit), sans-serif;
   font-size: 0.875rem;
   line-height: 1.6;
 }
@@ -669,7 +669,7 @@
 
 /* Inline code */
 .rich-content code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-outfit), sans-serif;
   font-size: 0.875em;
   background: oklch(0 0 0 / 8%);
   border-radius: 0.25rem;
@@ -687,7 +687,7 @@
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
   overflow-x: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-outfit), sans-serif;
   font-size: 0.875rem;
   line-height: 1.6;
 }

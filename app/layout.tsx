@@ -1,11 +1,4 @@
-import {
-  Playfair_Display,
-  DM_Serif_Display,
-  Source_Sans_3,
-  DM_Sans,
-  JetBrains_Mono,
-  Lora,
-} from "next/font/google"
+import { Outfit } from "next/font/google"
 
 import type { Metadata } from "next"
 
@@ -47,37 +40,11 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 }
 
-// LSHD1 brand type system (Design_PRD.md §4.1). Authoritative — do not substitute.
-const fontDisplay = Playfair_Display({
+// Outfit is the single typeface for the whole site. Every font token in
+// globals.css (sans, display, heading, ui, accent, mono) resolves to it.
+const outfit = Outfit({
   subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-})
-const fontHeading = DM_Serif_Display({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-heading",
-  display: "swap",
-})
-const fontBody = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-sans",
-  display: "swap",
-})
-const fontUi = DM_Sans({
-  subsets: ["latin"],
-  variable: "--font-ui",
-  display: "swap",
-})
-const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-  display: "swap",
-})
-const fontAccent = Lora({
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  variable: "--font-accent",
+  variable: "--font-outfit",
   display: "swap",
 })
 
@@ -92,12 +59,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn(
         "antialiased font-sans",
-        fontDisplay.variable,
-        fontHeading.variable,
-        fontBody.variable,
-        fontUi.variable,
-        fontMono.variable,
-        fontAccent.variable
+        outfit.variable
       )}
     >
       <body>

@@ -16,6 +16,23 @@ try {
   sealDataUri = null
 }
 
+// Outfit, the site's only typeface. Satori can't read the woff2 that next/font
+// serves, so static TTFs are bundled for the share image.
+type OgFont = { name: string; data: Buffer; weight: 400 | 700; style: "normal" }
+const ogFonts: OgFont[] = []
+for (const weight of [400, 700] as const) {
+  try {
+    ogFonts.push({
+      name: "Outfit",
+      data: readFileSync(join(process.cwd(), `assets/fonts/Outfit-${weight}.ttf`)),
+      weight,
+      style: "normal",
+    })
+  } catch {
+    // Falls back to satori's built-in font rather than failing the image.
+  }
+}
+
 type OgOptions = {
   title: string
   subtitle?: string
@@ -41,7 +58,7 @@ export function renderOgImage({
           background:
             "linear-gradient(135deg, #1e8dbb 0%, #166e93 45%, #063242 100%)",
           color: "#ffffff",
-          fontFamily: "sans-serif",
+          fontFamily: "Outfit",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
@@ -122,6 +139,6 @@ export function renderOgImage({
         </div>
       </div>
     ),
-    OG_SIZE
+    { ...OG_SIZE, fonts: ogFonts }
   )
 }
