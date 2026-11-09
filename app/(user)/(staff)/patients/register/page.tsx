@@ -96,7 +96,7 @@ export default function RegisterPatientPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Register Patient" back />
+      <PageHeader title="Register patient" back />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
 
@@ -231,7 +231,7 @@ export default function RegisterPatientPage() {
 
         <div className="flex gap-3">
           <Button type="submit" disabled={loading}>
-            {loading ? "Registering…" : "Register Patient"}
+            {loading ? "Registering…" : "Register patient"}
           </Button>
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel

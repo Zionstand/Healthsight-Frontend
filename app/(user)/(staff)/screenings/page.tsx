@@ -173,7 +173,7 @@ export default function ScreeningsPage() {
             {!loading &&
               screenings.map((s) => (
                 <LinkRow key={s.id} href={`/screenings/${s.id}`}>
-                  <TableCell>
+                  <TableCell className="min-w-0 whitespace-normal break-words">
                     <p className="font-medium">
                       {s.patient.firstName} {s.patient.lastName}
                     </p>

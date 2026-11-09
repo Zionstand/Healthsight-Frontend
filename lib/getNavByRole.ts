@@ -8,7 +8,7 @@ type AdminNavItem = { slug: string; module?: string; superAdminOnly?: boolean }
 // Power BI assessment report. Admins reach it from the admin sidebar
 // (/admin/analytics); on the staff side only directors get the link. The
 // backend enforces the same rule (GET /analytics/powerbi).
-const analyticsLink = { label: "Assessment Analysis", slug: "/analytics", icon: IconChartBar }
+const analyticsLink = { label: "Assessment analysis", slug: "/analytics", icon: IconChartBar }
 
 export const canViewAnalytics = (user?: User | null) =>
   !!user?.roles?.some((r) => r.name === "ADMIN" || r.name === "DIRECTOR")

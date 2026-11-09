@@ -1,32 +1,34 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { format } from "date-fns"
 import {
   ShieldCheck,
   BarChart3,
   Clock,
   Plus,
-  MoreHorizontal,
-  Eye,
-  Pencil,
-  Trash2,
   ChevronDown,
   ChevronRight,
 } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
+import { StatCard } from "@/components/StatCard"
+import { PeriodsTable } from "@/components/assessment/PeriodsTable"
+import { useListParams } from "@/hooks/use-list-params"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 import {
   Sheet,
   SheetContent,
@@ -45,13 +47,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Form,
   FormControl,
   FormField,
@@ -66,18 +61,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import api from "@/lib/api"
 import { useApiQuery, useInvalidate } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
-import { StatusBadge } from "@/components/StatusBadge"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -135,7 +121,7 @@ type PeriodFormValues = z.infer<typeof periodSchema>
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 
 export default function SafecareAdminPage() {
-  const router = useRouter()
+  const [{ tab }, setTabParams] = useListParams({ tab: "periods" })
   const SAFECARE = { type: "SAFECARE" }
   const invalidate = useInvalidate()
   const periodsQ = useApiQuery<Period[]>("/assessment/periods", {
@@ -218,25 +204,25 @@ export default function SafecareAdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="SafeCare Assessment"
+        title="SafeCare assessment"
         description="Standards-based quality improvement assessment across 14 domains"
       />
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <SummaryCard
+        <StatCard
           icon={<ShieldCheck className="h-5 w-5 text-brand-verdant-600" />}
           label="Active Periods"
           value={active.length}
           bg="bg-brand-verdant-50 dark:bg-brand-verdant-900/40"
         />
-        <SummaryCard
+        <StatCard
           icon={<Clock className="h-5 w-5 text-muted-foreground" />}
           label="Draft Periods"
           value={draft.length}
           bg="bg-muted/50"
         />
-        <SummaryCard
+        <StatCard
           icon={<BarChart3 className="h-5 w-5 text-brand-sky-600" />}
           label="Total Submissions"
           value={totalSubmissions}
@@ -244,7 +230,7 @@ export default function SafecareAdminPage() {
         />
       </div>
 
-      <Tabs defaultValue="periods">
+      <Tabs value={tab} onValueChange={(v) => setTabParams({ tab: v })}>
         <TabsList>
           <TabsTrigger value="periods">
             Periods{" "}
@@ -264,116 +250,18 @@ export default function SafecareAdminPage() {
         <TabsContent value="periods" className="space-y-4 pt-4">
           <div className="flex justify-end">
             <Button onClick={() => setPSheet({ open: true })}>
-              <Plus className="mr-2 h-4 w-4" /> New Period
+              <Plus /> New period
             </Button>
           </div>
-
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>End</TableHead>
-                <TableHead>Questions</TableHead>
-                <TableHead>Submissions</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {periods.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-10 text-center text-muted-foreground"
-                  >
-                    No SafeCare periods yet. Create one to get started.
-                  </TableCell>
-                </TableRow>
-              )}
-              {periods?.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <p className="font-medium">{p.title}</p>
-                    {p.description && (
-                      <p className="text-xs text-muted-foreground">
-                        {p.description}
-                      </p>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={p.status} />
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {format(new Date(p.startDate), "dd MMM yyyy")}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {format(new Date(p.endDate), "dd MMM yyyy")}
-                  </TableCell>
-                  <TableCell>{p._count.questions}</TableCell>
-                  <TableCell>{p._count.submissions}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(`/admin/assessment/safecare/${p.id}`)
-                          }
-                        >
-                          <Eye className="mr-2 h-4 w-4" /> View Results
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setPSheet({ open: true, data: p })}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {p.status === "DRAFT" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "ACTIVE")}
-                          >
-                            Set Active
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "ACTIVE" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "CLOSED")}
-                          >
-                            Close Period
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "CLOSED" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "ACTIVE")}
-                          >
-                            Reopen Period
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "DRAFT" && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() =>
-                                setDeleteTarget({ id: p.id, name: p.title })
-                              }
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <PeriodsTable
+            periods={periods}
+            resultsHref={(p) => `/admin/assessment/safecare/${p.id}`}
+            onCreate={() => setPSheet({ open: true })}
+            onEdit={(p) => setPSheet({ open: true, data: p })}
+            onStatusChange={updateStatus}
+            onDelete={(p) => setDeleteTarget({ id: p.id, name: p.title })}
+            emptyDescription="SafeCare runs every two years. Create a period to open it to quality assurance officers."
+          />
         </TabsContent>
 
         {/* ── QUESTION BANK (read-only) ─────────────────────────────────── */}
@@ -697,29 +585,5 @@ function PeriodSheet({
         </SheetFooter>
       </SheetContent>
     </Sheet>
-  )
-}
-
-// ─── SUMMARY CARD ─────────────────────────────────────────────────────────────
-
-function SummaryCard({
-  icon,
-  label,
-  value,
-  bg,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  bg: string
-}) {
-  return (
-    <div className={`space-y-2 rounded-lg border p-4 ${bg}`}>
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-sm text-muted-foreground">{label}</span>
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
-    </div>
   )
 }

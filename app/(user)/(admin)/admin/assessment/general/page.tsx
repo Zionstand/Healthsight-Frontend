@@ -1,17 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { format } from "date-fns"
 import {
   Plus,
   Trash2,
   MoreHorizontal,
-  Eye,
   Pencil,
   GripVertical,
 } from "lucide-react"
@@ -34,6 +31,8 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 
 import { PageHeader } from "@/components/PageHeader"
+import { PeriodsTable } from "@/components/assessment/PeriodsTable"
+import { useListParams } from "@/hooks/use-list-params"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -42,7 +41,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
 import {
   Sheet,
   SheetContent,
@@ -82,18 +86,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 import api from "@/lib/api"
 import { useApiQuery, useApiState, useInvalidate } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
-import { StatusBadge } from "@/components/StatusBadge"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +106,7 @@ type Question = {
   id: string
   text: string
   order: number
-  type: "YES_NO_NA" | "SINGLE_SELECT" | "MULTI_SELECT" | "TEXT_INPUT"
+  type: "YES_NO_NA" | "SINGLE_SELECT" | "MULTI_SELECT" | "TEXT_INPUT" | "NUMBER"
   category: Category
   categoryId: string
   roles: { role: Role }[]
@@ -135,9 +130,10 @@ type Period = {
 
 const Q_TYPE_LABELS: Record<string, string> = {
   YES_NO_NA: "Yes / No / N/A",
-  SINGLE_SELECT: "Single Choice",
-  MULTI_SELECT: "Multi Choice",
-  TEXT_INPUT: "Open-Ended Response",
+  SINGLE_SELECT: "Single choice",
+  MULTI_SELECT: "Multiple choice",
+  TEXT_INPUT: "Text answer",
+  NUMBER: "Number",
 }
 
 // ─── SCHEMAS ──────────────────────────────────────────────────────────────────
@@ -152,7 +148,7 @@ const optionSchema = z.object({
 
 const questionSchema = z.object({
   text: z.string().min(1, "Question text is required"),
-  type: z.enum(["YES_NO_NA", "SINGLE_SELECT", "MULTI_SELECT", "TEXT_INPUT"]),
+  type: z.enum(["YES_NO_NA", "SINGLE_SELECT", "MULTI_SELECT", "TEXT_INPUT", "NUMBER"]),
   categoryId: z.string().min(1, "Category is required"),
   roleIds: z.array(z.string()),
   options: z.array(optionSchema),
@@ -211,7 +207,7 @@ function SortableItem({
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function GeneralAssessmentPage() {
-  const router = useRouter()
+  const [{ tab }, setTabParams] = useListParams({ tab: "periods" })
   const GENERAL = { type: "GENERAL" }
   const invalidate = useInvalidate()
   const periodsQ = useApiQuery<Period[]>("/assessment/periods", {
@@ -384,11 +380,11 @@ export default function GeneralAssessmentPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="General Assessment"
+        title="General assessment"
         description="Manage assessment periods, question bank, and categories"
       />
 
-      <Tabs defaultValue="periods">
+      <Tabs value={tab} onValueChange={(v) => setTabParams({ tab: v })}>
         <TabsList>
           <TabsTrigger value="periods">
             Periods{" "}
@@ -414,112 +410,18 @@ export default function GeneralAssessmentPage() {
         <TabsContent value="periods" className="space-y-4 pt-4">
           <div className="flex justify-end">
             <Button onClick={() => setPSheet({ open: true })}>
-              <Plus className="mr-2 h-4 w-4" /> New Period
+              <Plus /> New period
             </Button>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Start</TableHead>
-                <TableHead>End</TableHead>
-                <TableHead>Questions</TableHead>
-                <TableHead>Submissions</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {periods.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-10 text-center text-muted-foreground"
-                  >
-                    No assessment periods yet. Create one to get started.
-                  </TableCell>
-                </TableRow>
-              )}
-              {periods?.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.title}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={p.status} />
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {format(new Date(p.startDate), "dd MMM yyyy, HH:mm")}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {format(new Date(p.endDate), "dd MMM yyyy, HH:mm")}
-                  </TableCell>
-                  <TableCell>{p._count.questions}</TableCell>
-                  <TableCell>{p._count.submissions}</TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() =>
-                            router.push(`/admin/assessment/general/${p.id}`)
-                          }
-                        >
-                          <Eye className="mr-2 h-4 w-4" /> View Results
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setPSheet({ open: true, data: p })}
-                        >
-                          <Pencil className="mr-2 h-4 w-4" /> Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {p.status === "DRAFT" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "ACTIVE")}
-                          >
-                            Set Active
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "ACTIVE" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "CLOSED")}
-                          >
-                            Close Period
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "CLOSED" && (
-                          <DropdownMenuItem
-                            onClick={() => updateStatus(p.id, "ACTIVE")}
-                          >
-                            Reopen Period
-                          </DropdownMenuItem>
-                        )}
-                        {p.status === "DRAFT" && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
-                              onClick={() =>
-                                setDeleteTarget({
-                                  type: "periods",
-                                  id: p.id,
-                                  name: p.title,
-                                })
-                              }
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" /> Delete
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <PeriodsTable
+            periods={periods}
+            resultsHref={(p) => `/admin/assessment/general/${p.id}`}
+            onCreate={() => setPSheet({ open: true })}
+            onEdit={(p) => setPSheet({ open: true, data: p })}
+            onStatusChange={updateStatus}
+            onDelete={(p) => setDeleteTarget({ type: "periods", id: p.id, name: p.title })} withTime
+            emptyDescription="Create a period to open the general assessment to staff."
+          />
         </TabsContent>
 
         {/* ── QUESTIONS ──────────────────────────────────────────────────────── */}
@@ -1060,13 +962,16 @@ function QuestionSheet({
                           Yes / No / N/A
                         </SelectItem>
                         <SelectItem value="SINGLE_SELECT">
-                          Single Choice
+                          Single choice
                         </SelectItem>
                         <SelectItem value="MULTI_SELECT">
-                          Multi Choice
+                          Multiple choice
                         </SelectItem>
                         <SelectItem value="TEXT_INPUT">
-                          Open-Ended Response
+                          Text answer
+                        </SelectItem>
+                        <SelectItem value="NUMBER">
+                          Number (counts, totals, years)
                         </SelectItem>
                       </SelectContent>
                     </Select>
@@ -1108,7 +1013,14 @@ function QuestionSheet({
               )}
 
               {/* Options (SINGLE/MULTI only) */}
-              {questionType !== "YES_NO_NA" && questionType !== "TEXT_INPUT" && (
+              {questionType === "NUMBER" && (
+                <p className="text-xs text-muted-foreground">
+                  Staff can enter whole numbers only, such as 0, 4 or 1200. Results show the total,
+                  average and range.
+                </p>
+              )}
+
+              {(questionType === "SINGLE_SELECT" || questionType === "MULTI_SELECT") && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label>Options</Label>

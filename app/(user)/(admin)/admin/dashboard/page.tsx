@@ -4,24 +4,31 @@ import { useMemo } from "react"
 import Link from "next/link"
 import {
   Users,
+  Loader2,
   Building2,
   Clock,
   ShieldCheck,
   ClipboardList,
   BarChart3,
-  CheckCircle2,
   UserRound,
   Stethoscope,
   TrendingUp,
   Download,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { downloadFile } from "@/lib/download"
 import { useApiQuery } from "@/lib/queries"
+import { StatusBadge } from "@/components/StatusBadge"
+import { EmptyState } from "@/components/list/ListKit"
 
 type ScreeningByType = { type: string; count: number }
 
@@ -46,6 +53,7 @@ type Stats = {
 
 type AdminUser = {
   id: string
+  username: string
   firstName: string
   lastName: string
   roles: { role: { label: string } }[]
@@ -78,10 +86,14 @@ export default function AdminDashboardPage() {
   const { data: stats, isPending: statsLoading } = useApiQuery<Stats>("/admin/stats", {
     errorMessage: "Failed to load dashboard",
   })
-  const { data: users, isPending: usersLoading } = useApiQuery<AdminUser[] | { data: AdminUser[] }>(
-    "/admin/users"
-  )
-  const loading = statsLoading || usersLoading
+  // The staff list is the slow call; it only feeds "Recent staff", so nothing
+  // else on the dashboard waits for it, and a failure just leaves that panel.
+  const {
+    data: users,
+    isPending: usersLoading,
+    isError: usersFailed,
+  } = useApiQuery<AdminUser[] | { data: AdminUser[] }>("/admin/users", { silent: true })
+  const loading = statsLoading
   const recentUsers = useMemo(() => {
     const list = Array.isArray(users) ? users : (users?.data ?? [])
     return [...list]
@@ -109,7 +121,7 @@ export default function AdminDashboardPage() {
       href: "/admin/phcs",
     },
     {
-      label: "Pending Approvals",
+      label: "Pending approvals",
       value: stats?.users.pending ?? 0,
       sub: "awaiting review",
       icon: Clock,
@@ -289,52 +301,75 @@ export default function AdminDashboardPage() {
         <Card className="gap-1 lg:col-span-3">
           <CardHeader className="border-b">
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Users</CardTitle>
+              <CardTitle>Recent staff</CardTitle>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/admin/users">View all</Link>
               </Button>
             </div>
           </CardHeader>
           <CardContent className="divide-y p-0">
-            {loading
-              ? Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between px-6 py-4">
+            {usersLoading ? (
+              <>
+                <p role="status" className="flex items-center gap-2 px-6 py-3 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Loading recent staff…
+                </p>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between px-6 py-4" aria-hidden>
                     <div className="space-y-1.5">
                       <Skeleton className="h-4 w-40" />
                       <Skeleton className="h-3 w-24" />
                     </div>
                     <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
-                ))
-              : recentUsers.map((u) => (
-                  <div key={u.id} className="flex items-center justify-between px-6 py-4">
-                    <div>
-                      <p className="text-sm font-medium">{u.firstName} {u.lastName}</p>
-                      <p className="text-xs text-muted-foreground">{u.roles.map((r) => r.role.label).join(", ")}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {u.accountStatus === "PENDING" && (
-                        <Badge className="bg-brand-amber-100 text-xs text-brand-amber-700">Pending</Badge>
-                      )}
-                      {isNew(u.createdAt) && u.accountStatus !== "PENDING" && (
-                        <Badge className="bg-brand-sky-100 text-xs text-brand-sky-700">New</Badge>
-                      )}
-                      <span className="text-xs text-muted-foreground">{timeAgo(u.createdAt)}</span>
-                    </div>
-                  </div>
                 ))}
+              </>
+            ) : usersFailed ? (
+              <EmptyState
+                icon={<Users />}
+                title="Couldn't load recent staff"
+                description="The rest of the dashboard is up to date. Open the staff list to try again."
+              />
+            ) : recentUsers.length === 0 ? (
+              <EmptyState icon={<Users />} title="No staff accounts yet" />
+            ) : (
+              recentUsers.map((u) => (
+                <Link
+                  key={u.id}
+                  href={`/admin/users/${u.username}`}
+                  className="flex items-center justify-between gap-3 px-6 py-4 transition-colors hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:outline-none"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {u.firstName} {u.lastName}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {u.roles.map((r) => r.role.label).join(", ")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {u.accountStatus === "PENDING" ? (
+                      <StatusBadge status="PENDING" />
+                    ) : isNew(u.createdAt) ? (
+                      <StatusBadge status="NEW" label="New" tone="info" />
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">{timeAgo(u.createdAt)}</span>
+                  </div>
+                </Link>
+              ))
+            )}
           </CardContent>
         </Card>
 
         <Card className="gap-1 lg:col-span-2">
           <CardHeader className="border-b">
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>Quick actions</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {[
               { label: "Review pending users", href: "/admin/pending-users", icon: Clock, badge: stats?.users.pending },
-              { label: "General Assessment", href: "/admin/assessment/general", icon: ClipboardList },
-              { label: "SafeCare Assessment", href: "/admin/assessment/safecare", icon: ShieldCheck },
+              { label: "General assessment", href: "/admin/assessment/general", icon: ClipboardList },
+              { label: "SafeCare assessment", href: "/admin/assessment/safecare", icon: ShieldCheck },
               { label: "PHC Map View", href: "/admin/phcs/map", icon: Building2 },
               { label: "Manage staff", href: "/admin/users", icon: Users },
             ].map(({ label, href, icon: Icon, badge }) => (

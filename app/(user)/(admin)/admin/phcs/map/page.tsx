@@ -8,7 +8,6 @@ import { List, MapPin } from "lucide-react"
 import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { useApiQuery } from "@/lib/queries"
 
 const PhcMap = dynamic(() => import("./_components/PhcMap"), {
@@ -38,7 +37,7 @@ export default function PhcMapPage() {
     <div className="flex h-[calc(100vh-6rem)] flex-col gap-4">
       <div className="flex items-center justify-between">
         <PageHeader
-          title="PHC Map"
+          title="PHC map"
           description={
             loading
               ? "Loading…"

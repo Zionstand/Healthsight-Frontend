@@ -20,14 +20,14 @@ const LABELS: Record<string, string> = {
   register: "Register patient",
   screenings: "Screenings",
   appointments: "Appointments",
-  assessment: "Assessments",
+  assessment: "My assessments",
   general: "General assessment",
   safecare: "SafeCare assessment",
   users: "Staff",
   "pending-users": "Pending approvals",
   phcs: "PHCs",
   map: "Map",
-  roles: "Roles & permissions",
+  roles: "Roles",
   sms: "SMS logs",
   directors: "Directors",
   dividers: "Dividers",
@@ -54,12 +54,16 @@ export function Breadcrumbs() {
 
   const parts = pathname.split("/").filter(Boolean)
   const offset = parts[0] === "admin" ? 1 : 0
-  const crumbs = parts.slice(offset).map((seg, i) => {
-    const href = "/" + parts.slice(0, offset + i + 1).join("/")
-    const last = i === parts.length - offset - 1
-    const name = LABELS[seg] ?? (last ? (label ?? "Details") : "Details")
-    return { href, name: last && label ? label : name, linkable: !last && ROUTES.has(href) }
-  })
+  const crumbs = parts
+    .slice(offset)
+    .map((seg, i) => {
+      const href = "/" + parts.slice(0, offset + i + 1).join("/")
+      const last = i === parts.length - offset - 1
+      const name = LABELS[seg] ?? (last ? (label ?? "Details") : "Details")
+      return { href, name: last && label ? label : name, linkable: !last && ROUTES.has(href) }
+    })
+    // /admin/assessment is only a folder; "General assessment" already says it.
+    .filter((c) => c.href !== "/admin/assessment")
 
   if (crumbs.length === 0) return null
 

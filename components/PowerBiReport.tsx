@@ -41,7 +41,7 @@ export function PowerBiReport() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Assessment Analysis"
+        title="Assessment analysis"
         description="Assessment results across PHCs and LGAs, from Power BI"
         action={
           url && (
@@ -86,7 +86,7 @@ export function PowerBiReport() {
           {!frameLoaded && <Skeleton className="absolute inset-0 rounded-none" />}
           {url && (
             <iframe
-              title="Assessment Analysis"
+              title="Assessment analysis"
               src={url}
               className="absolute inset-0 h-full w-full border-0"
               allowFullScreen

@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useApiQuery } from "@/lib/queries"
+import { StatusBadge } from "@/components/StatusBadge"
 import { StatCard } from "@/components/StatCard"
 
 type MyPeriod = {
@@ -179,7 +180,7 @@ export default function StaffDashboardPage() {
         )}
 
         {!loading && periods.length === 0 && (
-          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-center">
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-14 text-center">
             <ClipboardList className="mb-3 h-10 w-10 text-muted-foreground" />
             <p className="font-medium text-muted-foreground">
               No active assessments
@@ -206,7 +207,7 @@ export default function StaffDashboardPage() {
               return (
                 <div
                   key={p.id}
-                  className="group relative flex flex-col justify-between rounded-lg border bg-card p-5 transition-shadow hover:shadow-md"
+                  className="group relative flex flex-col justify-between rounded-xl border bg-card p-5 transition-shadow hover:shadow-md"
                 >
                   {isComplete && (
                     <div className="absolute top-3 right-3">
@@ -232,12 +233,7 @@ export default function StaffDashboardPage() {
                           : `Closes ${formatDistanceToNow(new Date(p.endDate), { addSuffix: true })}`}
                       </span>
                       {isExpiringSoon && !isComplete && (
-                        <Badge
-                          variant="destructive"
-                          className="px-1.5 py-0 text-xs"
-                        >
-                          Closing soon
-                        </Badge>
+                        <StatusBadge status="CLOSING" label="Closing soon" tone="danger" />
                       )}
                     </div>
                   </div>

@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -25,7 +26,8 @@ import api from "@/lib/api"
 import { useInvalidate } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
 import { useAuth } from "@/store/useAuth"
-import { FacilityPicker } from "./FacilityPicker"
+import { FacilityPicker, whoDidWhat } from "./FacilityPicker"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ type Question = {
   id: string
   text: string
   order: number
-  type: "YES_NO_NA" | "SINGLE_SELECT" | "MULTI_SELECT" | "TEXT_INPUT"
+  type: "YES_NO_NA" | "SINGLE_SELECT" | "MULTI_SELECT" | "TEXT_INPUT" | "NUMBER"
   category: Category
   options: Option[]
 }
@@ -63,6 +65,7 @@ type Period = {
     updatedAt: string
     daysLeft: number
     lastSavedBy: { id: string; firstName: string; lastName: string } | null
+    startedBy: { id: string; firstName: string; lastName: string } | null
     answers: { questionId: string; selectedOptions: string[] }[]
   } | null
 }
@@ -101,6 +104,7 @@ export default function AssessmentFormPage() {
   const answersRef = useRef<AnswersMap>({})
   const [pickerOpen, setPickerOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
+  useDocumentTitle(period?.title)
 
   // One draft per period per facility.
   const draftKey = `hs_assessment_draft_${id}${phcParam ? `_${phcParam}` : ""}`
@@ -348,46 +352,8 @@ export default function AssessmentFormPage() {
     doSave()
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="flex gap-6">
-          <div className="hidden w-56 shrink-0 space-y-2 md:block">
-            {[...Array(8)].map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
-            ))}
-          </div>
-          <div className="flex-1 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full" />
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Still transitioning (redirect in progress or loading race)
-  if (!period) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-64" />
-        <div className="flex gap-6">
-          <div className="hidden w-56 shrink-0 space-y-2 md:block">
-            {[...Array(8)].map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
-            ))}
-          </div>
-          <div className="flex-1 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full" />
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // Loading, or on the way back to the list after an error.
+  if (loading || !period) return <FormSkeleton />
 
   const picker = period.choosesFacility ? (
     <FacilityPicker
@@ -431,7 +397,10 @@ export default function AssessmentFormPage() {
   const editingClosed = !periodClosed && period.mySubmission?.daysLeft === 0
   const closed = periodClosed || editingClosed
   const sub = period.mySubmission
-  const byOther = !!sub?.lastSavedBy && sub.lastSavedBy.id !== me?.id
+  // Someone other than this user has worked on it.
+  const byOther =
+    (!!sub?.lastSavedBy && sub.lastSavedBy.id !== me?.id) ||
+    (!!sub?.startedBy && sub.startedBy.id !== me?.id)
 
   // Global question numbering
   const globalNumbers: Record<string, number> = {}
@@ -511,10 +480,7 @@ export default function AssessmentFormPage() {
         <div className="flex gap-3 rounded-lg border border-brand-sky-200 bg-brand-sky-50 p-3 text-sm text-brand-sky-900 dark:border-brand-sky-900 dark:bg-brand-sky-900/20 dark:text-brand-sky-200">
           <History className="mt-0.5 size-4 shrink-0" />
           <p>
-            Started {format(new Date(sub.createdAt), "dd MMM yyyy")}
-            {sub.lastSavedBy &&
-              `, last saved by ${byOther ? `${sub.lastSavedBy.firstName} ${sub.lastSavedBy.lastName}` : "you"}`}{" "}
-            on {format(new Date(sub.updatedAt), "dd MMM yyyy, HH:mm")}.{" "}
+            {whoDidWhat(sub, me?.id, { startedBy: sub.startedBy?.id, lastSavedBy: sub.lastSavedBy?.id })}{" "}
             {!byOther
               ? "Your answers are shown below."
               : closed
@@ -734,6 +700,42 @@ export default function AssessmentFormPage() {
   )
 }
 
+// ─── LOADING ──────────────────────────────────────────────────────────────────
+
+/**
+ * The form's shape while its questions load. Large assessments take a few
+ * seconds on a slow connection, so it says what is happening rather than
+ * showing bare grey blocks.
+ */
+function FormSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-72 max-w-full" />
+        <Skeleton className="h-4 w-48" />
+      </div>
+      <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" />
+        Loading the assessment questions…
+      </p>
+      <Skeleton className="h-16 w-full rounded-lg" />
+      <div className="flex gap-8">
+        <div className="hidden w-56 shrink-0 space-y-2 md:block">
+          {[...Array(8)].map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+        <div className="flex-1 space-y-4">
+          <Skeleton className="h-10 w-full rounded-md" />
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── QUESTION ITEM ────────────────────────────────────────────────────────────
 
 function QuestionItem({
@@ -835,6 +837,10 @@ function QuestionItem({
         </div>
       )}
 
+      {question.type === "NUMBER" && (
+        <NumberAnswer id={question.id} value={value} onChange={onChange} disabled={disabled} />
+      )}
+
       {question.type === "TEXT_INPUT" && (
         <Textarea
           value={value[0] ?? ""}
@@ -844,6 +850,64 @@ function QuestionItem({
           rows={3}
           className="max-w-lg resize-none"
         />
+      )}
+    </div>
+  )
+}
+
+/**
+ * A whole-number answer. Phones open the number pad, and anything that isn't
+ * a digit is dropped as it's typed or pasted ("1,200" becomes 1200), so a
+ * number question can't end up holding text.
+ */
+function NumberAnswer({
+  id,
+  value,
+  onChange,
+  disabled,
+}: {
+  id: string
+  value: string[]
+  onChange: (val: string[]) => void
+  disabled: boolean
+}) {
+  const [hint, setHint] = useState(false)
+  const current = value[0] ?? ""
+  // Answers saved before this became a number question may be text.
+  const notANumber = current !== "" && !/^\d+$/.test(current)
+
+  return (
+    <div className="space-y-1.5">
+      <Input
+        id={`${id}-number`}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
+        maxLength={9}
+        value={current}
+        disabled={disabled}
+        placeholder="0"
+        aria-invalid={notANumber || undefined}
+        aria-describedby={hint || notANumber ? `${id}-number-hint` : undefined}
+        onChange={(e) => {
+          const raw = e.target.value
+          const digits = raw.replace(/\D/g, "").slice(0, 9)
+          setHint(digits !== raw.replace(/[\s,]/g, ""))
+          onChange(digits ? [digits] : [])
+        }}
+        onBlur={() => setHint(false)}
+        className="w-40 tabular-nums"
+      />
+      {(hint || notANumber) && (
+        <p
+          id={`${id}-number-hint`}
+          className={notANumber ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+        >
+          {notANumber
+            ? "This answer isn't a number. Enter a number to replace it."
+            : "Numbers only, such as 0, 4 or 12."}
+        </p>
       )}
     </div>
   )

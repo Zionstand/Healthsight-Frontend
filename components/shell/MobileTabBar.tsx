@@ -61,7 +61,8 @@ export function MobileTabBar({ badges = {} }: { badges?: Record<string, number> 
   )
 }
 
-/** "My Assessments" -> "Assessments", "Assessment Analysis" -> "Analysis" */
+/** "My assessments" -> "Assessments", "Assessment analysis" -> "Analysis" */
 function shortLabel(label: string) {
-  return label.replace(/^(My|View|Admin)\s+/, "").replace(/^Assessment Analysis$/, "Analysis")
+  const s = label.replace(/^(My|View|Admin)\s+/i, "").replace(/^Assessment analysis$/i, "Analysis")
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }

@@ -4,21 +4,18 @@ import Link from "next/link"
 import { format } from "date-fns"
 import {
   ClipboardList,
-  CheckCircle2,
   Clock,
   ChevronRight,
-  Calendar,
-  XCircle,
   Eye,
-  ShieldCheck,
 } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useApiQuery } from "@/lib/queries"
+import { StatusBadge } from "@/components/StatusBadge"
+import { EmptyState } from "@/components/list/ListKit"
 
 type Submission = {
   id: string
@@ -54,11 +51,7 @@ type MyPeriods = {
 }
 
 function SafeCareBadge() {
-  return (
-    <Badge className="bg-brand-sky-100 text-brand-sky-700 dark:bg-brand-sky-900 dark:text-brand-sky-300">
-      <ShieldCheck className="mr-1 h-3 w-3" /> SafeCare
-    </Badge>
-  )
+  return <StatusBadge status="SAFECARE" label="SafeCare" tone="info" />
 }
 
 function EditWindowBadge({ daysLeft }: { daysLeft: number }) {
@@ -91,20 +84,18 @@ function OpenCard({ p }: { p: MyPeriod }) {
   const isSafeCare = p.type === "SAFECARE"
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card p-5">
+    <div className="space-y-4 rounded-xl border bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
             {isComplete ? (
-              <Badge className="bg-brand-verdant-100 text-brand-verdant-700 dark:bg-brand-verdant-900 dark:text-brand-verdant-300">
-                <CheckCircle2 className="mr-1 h-3 w-3" /> Submitted
-              </Badge>
+              <StatusBadge status="COMPLETED" label={cov ? "All PHCs done" : "Submitted"} />
             ) : notStarted ? (
-              <Badge variant="secondary">New</Badge>
+              <StatusBadge status="NEW" label="Not started" tone="neutral" />
             ) : (
-              <Badge variant="outline">In Progress</Badge>
+              <StatusBadge status="IN_PROGRESS" />
             )}
           </div>
           {p.description && (
@@ -147,15 +138,13 @@ function OpenCard({ p }: { p: MyPeriod }) {
 function UpcomingCard({ p }: { p: MyPeriod }) {
   const isSafeCare = p.type === "SAFECARE"
   return (
-    <div className="space-y-2 rounded-lg border border-dashed bg-muted/30 p-5 opacity-70">
+    <div className="space-y-2 rounded-xl border border-dashed bg-muted/30 p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
-            <Badge variant="outline" className="text-brand-sky-600 dark:text-brand-sky-400">
-              <Calendar className="mr-1 h-3 w-3" /> Upcoming
-            </Badge>
+            <StatusBadge status="SCHEDULED" label="Upcoming" />
           </div>
           {p.description && (
             <p className="text-sm text-muted-foreground">{p.description}</p>
@@ -182,15 +171,13 @@ function ClosedCard({ p }: { p: MyPeriod }) {
   const isSafeCare = p.type === "SAFECARE"
 
   return (
-    <div className="space-y-3 rounded-lg border bg-card p-5">
+    <div className="space-y-3 rounded-xl border bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
-            <Badge className="bg-brand-verdant-100 text-brand-verdant-700 dark:bg-brand-verdant-900 dark:text-brand-verdant-300">
-              <CheckCircle2 className="mr-1 h-3 w-3" /> Submitted
-            </Badge>
+            <StatusBadge status="COMPLETED" label="Submitted" />
           </div>
           {p.description && (
             <p className="text-sm text-muted-foreground">{p.description}</p>
@@ -222,15 +209,13 @@ function ClosedCard({ p }: { p: MyPeriod }) {
 function MissedCard({ p }: { p: MyPeriod }) {
   const isSafeCare = p.type === "SAFECARE"
   return (
-    <div className="space-y-2 rounded-lg border border-brand-crimson-200 bg-brand-crimson-50/40 p-5 dark:border-brand-crimson-900 dark:bg-brand-crimson-900/20">
+    <div className="space-y-2 rounded-xl border bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
-            <Badge variant="destructive" className="opacity-80">
-              <XCircle className="mr-1 h-3 w-3" /> Missed
-            </Badge>
+            <StatusBadge status="MISSED" />
           </div>
           {p.description && (
             <p className="text-sm text-muted-foreground">{p.description}</p>
@@ -257,7 +242,7 @@ function Section({
   if (empty) return null
   return (
     <div className="space-y-3">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <h2 className="text-sm font-medium text-muted-foreground">
         {title}
       </h2>
       <div className="grid gap-3">{children}</div>
@@ -273,7 +258,7 @@ export default function AssessmentListPage() {
   if (loading) {
     return (
       <div className="space-y-4">
-        <PageHeader title="My Assessments" />
+        <PageHeader title="My assessments" />
         {[...Array(3)].map((_, i) => (
           <Skeleton key={i} className="h-32 w-full" />
         ))}
@@ -296,29 +281,28 @@ export default function AssessmentListPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="My Assessments"
-        description="Assessment periods assigned to your role"
+        title="My assessments"
+        description="Quality assessments for your role: what's open now, what's coming, and what you've done."
       />
 
       {isEmpty && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-          <ClipboardList className="mb-3 h-10 w-10 text-muted-foreground" />
-          <p className="text-muted-foreground">No assessments yet.</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Check back when an assessment period is open.
-          </p>
-        </div>
+        <EmptyState
+          className="rounded-xl border border-dashed"
+          icon={<ClipboardList />}
+          title="No assessments yet"
+          description="Assessments for your role appear here when an admin opens a period."
+        />
       )}
 
-      <Section title="Open Now" empty={!data || data.open.length === 0}>
+      <Section title="Open now" empty={!data || data.open.length === 0}>
         {data?.open.map((p) => <OpenCard key={p.id} p={p} />)}
       </Section>
 
-      <Section title="Coming Up" empty={!data || data.upcoming.length === 0}>
+      <Section title="Coming up" empty={!data || data.upcoming.length === 0}>
         {data?.upcoming.map((p) => <UpcomingCard key={p.id} p={p} />)}
       </Section>
 
-      <Section title="Past Assessments" empty={past.length === 0}>
+      <Section title="Past assessments" empty={past.length === 0}>
         {past.map((p) =>
           p.displayStatus === "CLOSED" ? (
             <ClosedCard key={p.id} p={p} />

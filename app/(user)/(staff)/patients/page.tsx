@@ -123,7 +123,7 @@ export default function PatientsPage() {
             {!loading &&
               patients.map((p) => (
                 <LinkRow key={p.id} href={`/patients/${p.id}`}>
-                  <TableCell>
+                  <TableCell className="min-w-0 whitespace-normal break-words">
                     <p className="font-medium">
                       {p.firstName} {p.lastName}
                     </p>

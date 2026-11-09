@@ -4,11 +4,18 @@ import { useState } from "react"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
-import { Users, CheckCircle2, BarChart3, User } from "lucide-react"
+import {
+  Building2,
+  CheckCircle2,
+  BarChart3,
+  ClipboardList,
+  User,
+} from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -29,6 +36,15 @@ import api from "@/lib/api"
 import { useApiQuery } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
 import { StatCard } from "@/components/StatCard"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  ListPagination,
+  ListToolbar,
+  SearchInput,
+  TableState,
+} from "@/components/list/ListKit"
+import { useListParams, useSearchParam } from "@/hooks/use-list-params"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +65,14 @@ type QuestionStat = {
   totalAnswers: number
   optionStats: OptionStat[]
   textResponses: { value: string; count: number }[] | null
+  numberStats?: {
+    count: number
+    sum: number
+    average: number | null
+    min: number | null
+    max: number | null
+    skipped: number
+  } | null
 }
 
 type SubmissionSummary = {
@@ -68,6 +92,8 @@ type SubmissionSummary = {
     lga: { name: string } | null
     roles: { role: { label: string } }[]
   } | null
+  /** Who created the submission; `user` is whoever saved it last. */
+  startedBy?: { id: string; firstName: string; lastName: string } | null
 }
 
 type Results = {
@@ -94,9 +120,12 @@ type Results = {
 }
 
 function safecareColor(label: string) {
-  if (label === "Fully Compliant") return "text-brand-verdant-700 dark:text-brand-verdant-400 font-medium"
-  if (label === "Partially Compliant") return "text-brand-amber-600 dark:text-brand-amber-400 font-medium"
-  if (label === "Not Compliant") return "text-brand-crimson-600 dark:text-brand-crimson-400 font-medium"
+  if (label === "Fully Compliant")
+    return "text-brand-verdant-700 dark:text-brand-verdant-400 font-medium"
+  if (label === "Partially Compliant")
+    return "text-brand-amber-600 dark:text-brand-amber-400 font-medium"
+  if (label === "Not Compliant")
+    return "text-brand-crimson-600 dark:text-brand-crimson-400 font-medium"
   if (label === "Not Applicable") return "text-muted-foreground"
   return ""
 }
@@ -108,8 +137,9 @@ function safecareBarColor(label: string) {
   return ""
 }
 
-
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
+
+const SUB_PAGE_SIZE = 25
 
 export default function PeriodResultsPage() {
   const { id } = useParams<{ id: string }>()
@@ -122,7 +152,13 @@ export default function PeriodResultsPage() {
   )
   const [userDetail, setUserDetail] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-
+  const [params, setParams] = useListParams({
+    tab: "submissions",
+    q: "",
+    page: 1,
+  })
+  const [search, setSearch] = useSearchParam(params.q, (q) => setParams({ q }))
+  useDocumentTitle(results?.period.title)
 
   async function openUserDetail(sub: SubmissionSummary) {
     setSelectedUser(sub)
@@ -170,13 +206,43 @@ export default function PeriodResultsPage() {
     {}
   )
 
+  const term = params.q.trim().toLowerCase()
+  const shownSubs = submissions
+    .filter(
+      (s) =>
+        !term ||
+        [
+          s.phc?.name,
+          s.phc?.lga?.name,
+          s.user?.firstName,
+          s.user?.lastName,
+          s.startedBy?.firstName,
+          s.startedBy?.lastName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(term)
+    )
+    .sort((a, b) => (a.phc?.name ?? "").localeCompare(b.phc?.name ?? ""))
+  const totalPages = Math.max(1, Math.ceil(shownSubs.length / SUB_PAGE_SIZE))
+  const page = Math.min(params.page, totalPages)
+  const pageSubs = shownSubs.slice(
+    (page - 1) * SUB_PAGE_SIZE,
+    page * SUB_PAGE_SIZE
+  )
+
   return (
     <div className="space-y-8">
       <PageHeader
         title={period.title}
         description={period.description}
         back
-        fallbackHref={period.type === "SAFECARE" ? "/admin/assessment/safecare" : "/admin/assessment/general"}
+        fallbackHref={
+          period.type === "SAFECARE"
+            ? "/admin/assessment/safecare"
+            : "/admin/assessment/general"
+        }
         badges={[period.type, period.status]}
         action={
           <div className="text-sm text-muted-foreground">
@@ -187,32 +253,40 @@ export default function PeriodResultsPage() {
       />
 
       {/* ── STATS CARDS ─────────────────────────────────────────────────────── */}
-      <div className={`grid grid-cols-1 gap-2 ${period.type === "SAFECARE" ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+      <div
+        className={`grid grid-cols-1 gap-2 ${period.type === "SAFECARE" ? "md:grid-cols-4" : "md:grid-cols-3"}`}
+      >
         <StatCard
-          icon={<Users className="h-5 w-5 text-brand-sky-600" />}
-          label="Eligible Staff"
+          icon={<Building2 className="h-5 w-5 text-brand-sky-600" />}
+          label="PHCs in scope"
           value={stats.totalEligible}
           bg="bg-brand-sky-50 dark:bg-brand-sky-900"
         />
         <StatCard
           icon={<CheckCircle2 className="h-5 w-5 text-brand-verdant-600" />}
-          label="Submitted"
+          label="PHCs submitted"
           value={stats.totalSubmitted}
           bg="bg-brand-verdant-50 dark:bg-brand-verdant-900"
         />
-        <div className="space-y-2 rounded-lg border p-4">
+        <div className="space-y-2 rounded-xl border bg-card p-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
-            <span className="text-sm text-muted-foreground">Completion Rate</span>
+            <span className="text-sm text-muted-foreground">
+              Completion rate
+            </span>
           </div>
           <p className="text-2xl font-bold">{stats.completionRate}%</p>
           <Progress value={stats.completionRate} className="h-2" />
         </div>
         {period.type === "SAFECARE" && stats.complianceScore !== null && (
-          <div className={`space-y-2 rounded-lg border p-4 ${stats.complianceScore >= 75 ? "bg-brand-verdant-50 dark:bg-brand-verdant-900" : stats.complianceScore >= 50 ? "bg-brand-amber-50 dark:bg-brand-amber-900" : "bg-brand-crimson-50 dark:bg-brand-crimson-900"}`}>
+          <div
+            className={`space-y-2 rounded-lg border p-4 ${stats.complianceScore >= 75 ? "bg-brand-verdant-50 dark:bg-brand-verdant-900" : stats.complianceScore >= 50 ? "bg-brand-amber-50 dark:bg-brand-amber-900" : "bg-brand-crimson-50 dark:bg-brand-crimson-900"}`}
+          >
             <div className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" />
-              <span className="text-sm text-muted-foreground">SafeCare Compliance</span>
+              <span className="text-sm text-muted-foreground">
+                SafeCare Compliance
+              </span>
             </div>
             <p className="text-2xl font-bold">{stats.complianceScore}%</p>
             <Progress
@@ -224,172 +298,282 @@ export default function PeriodResultsPage() {
       </div>
 
       {/* ── SAFECARE CATEGORY COMPLIANCE ────────────────────────────────────── */}
-      {period.type === "SAFECARE" && stats.categoryCompliance && stats.categoryCompliance.length > 0 && (
-        <>
-          <Separator />
-          <div className="space-y-3">
-            <h2 className="text-base font-medium">Compliance by Domain</h2>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {stats.categoryCompliance.map((cat) => (
-                <div key={cat.name} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium leading-tight">{cat.name}</p>
-                    <span className={`shrink-0 text-sm font-bold ${cat.score >= 75 ? "text-brand-verdant-600" : cat.score >= 50 ? "text-brand-amber-600" : "text-brand-crimson-600"}`}>
-                      {cat.score}%
-                    </span>
+      {period.type === "SAFECARE" &&
+        stats.categoryCompliance &&
+        stats.categoryCompliance.length > 0 && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <h2 className="text-base font-medium">Compliance by domain</h2>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {stats.categoryCompliance.map((cat) => (
+                  <div
+                    key={cat.name}
+                    className="space-y-2 rounded-lg border p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm leading-tight font-medium">
+                        {cat.name}
+                      </p>
+                      <span
+                        className={`shrink-0 text-sm font-bold ${cat.score >= 75 ? "text-brand-verdant-600" : cat.score >= 50 ? "text-brand-amber-600" : "text-brand-crimson-600"}`}
+                      >
+                        {cat.score}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={cat.score}
+                      className={`h-1.5 ${cat.score >= 75 ? "[&>*]:bg-brand-verdant-500" : cat.score >= 50 ? "[&>*]:bg-brand-amber-400" : "[&>*]:bg-brand-crimson-500"}`}
+                    />
                   </div>
-                  <Progress
-                    value={cat.score}
-                    className={`h-1.5 ${cat.score >= 75 ? "[&>*]:bg-brand-verdant-500" : cat.score >= 50 ? "[&>*]:bg-brand-amber-400" : "[&>*]:bg-brand-crimson-500"}`}
-                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+      <Tabs value={params.tab} onValueChange={(v) => setParams({ tab: v })}>
+        <TabsList>
+          <TabsTrigger value="submissions">
+            Submissions{" "}
+            <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">
+              {submissions.length}
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="questions">
+            Question breakdown{" "}
+            <span className="ml-1.5 text-xs text-muted-foreground tabular-nums">
+              {questions.length}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── SUBMISSIONS ──────────────────────────────────────────────────── */}
+        <TabsContent value="submissions" className="space-y-4 pt-4">
+          <ListToolbar>
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search by PHC, LGA or staff name"
+            />
+          </ListToolbar>
+          <div className="rounded-xl border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>PHC</TableHead>
+                  <TableHead className="hidden md:table-cell">
+                    Recorded by
+                  </TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead className="hidden sm:table-cell">
+                    Last updated
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableState
+                  loading={false}
+                  empty={shownSubs.length === 0}
+                  columns={4}
+                  icon={<ClipboardList />}
+                  title={
+                    term
+                      ? "No submissions match your search"
+                      : "No submissions yet"
+                  }
+                  description={
+                    term
+                      ? "Try a different PHC, LGA or name."
+                      : "Submissions appear here as soon as staff start filling in this assessment."
+                  }
+                  action={
+                    term ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearch("")}
+                      >
+                        Clear search
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                {pageSubs.map((s) => {
+                  const pct = Math.round(
+                    (s.answeredCount / Math.max(s.totalQuestions, 1)) * 100
+                  )
+                  const recorder = s.user
+                    ? `${s.user.firstName} ${s.user.lastName}`
+                    : "Staff account removed"
+                  return (
+                    <TableRow
+                      key={s.id}
+                      tabIndex={0}
+                      className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+                      onClick={() => openUserDetail(s)}
+                      onKeyDown={(e) => e.key === "Enter" && openUserDetail(s)}
+                    >
+                      <TableCell className="min-w-0 whitespace-normal break-words">
+                        <p className="font-medium">
+                          {s.phc?.name ?? s.user?.phc?.name ?? "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.phc?.lga?.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground md:hidden">
+                          {recorder}
+                        </p>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <p
+                          className={
+                            s.user
+                              ? undefined
+                              : "text-sm text-muted-foreground italic"
+                          }
+                        >
+                          {recorder}
+                        </p>
+                        {s.user && (
+                          <p className="text-xs text-muted-foreground">
+                            {s.user.roles.map((r) => r.role.label).join(", ")}
+                          </p>
+                        )}
+                        {s.startedBy && s.startedBy.id !== s.user?.id && (
+                          <p className="text-xs text-muted-foreground">
+                            Started by {s.startedBy.firstName}{" "}
+                            {s.startedBy.lastName}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="w-24 space-y-1 sm:w-32">
+                          <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
+                            <span>
+                              {s.answeredCount}/{s.totalQuestions}
+                            </span>
+                            <span>{pct}%</span>
+                          </div>
+                          <Progress value={pct} className="h-1.5" />
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground sm:table-cell">
+                        {format(new Date(s.updatedAt), "dd MMM yyyy, HH:mm")}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <ListPagination
+            page={page}
+            totalPages={totalPages}
+            total={shownSubs.length}
+            pageSize={SUB_PAGE_SIZE}
+            onPageChange={(p) => setParams({ page: p })}
+            noun="submission"
+          />
+        </TabsContent>
+
+        {/* ── PER-QUESTION BREAKDOWN ──────────────────────────────────────── */}
+        <TabsContent value="questions" className="space-y-6 pt-4">
+          {Object.entries(byCategory).map(([catId, qs]) => (
+            <div key={catId} className="space-y-4">
+              <h3 className="inline-block rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
+                {qs[0].category.name}
+              </h3>
+              {qs.map((q, idx) => (
+                <div key={q.id} className="space-y-3 rounded-lg border p-4">
+                  <p className="text-sm font-medium">
+                    <span className="mr-2 text-muted-foreground">
+                      {idx + 1}.
+                    </span>
+                    {q.text}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {q.totalAnswers} response(s)
+                  </p>
+                  <div className="space-y-2">
+                    {q.numberStats && q.numberStats.count > 0 && (
+                      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {[
+                          ["Total", q.numberStats.sum],
+                          ["Average", q.numberStats.average],
+                          ["Lowest", q.numberStats.min],
+                          ["Highest", q.numberStats.max],
+                        ].map(([label, v]) => (
+                          <div key={label as string} className="rounded-md bg-muted/40 px-3 py-2">
+                            <dt className="text-xs text-muted-foreground">{label}</dt>
+                            <dd className="text-sm font-semibold tabular-nums">
+                              {v === null ? "—" : Number(v).toLocaleString()}
+                            </dd>
+                          </div>
+                        ))}
+                        {q.numberStats.skipped > 0 && (
+                          <p className="col-span-full text-xs text-muted-foreground">
+                            {q.numberStats.skipped} answer{q.numberStats.skipped === 1 ? " isn't a number" : "s aren't numbers"} and{" "}
+                            {q.numberStats.skipped === 1 ? "is" : "are"} left out of these figures.
+                          </p>
+                        )}
+                      </dl>
+                    )}
+                    {q.type === "TEXT_INPUT" || q.type === "NUMBER" ? (
+                      q.textResponses && q.textResponses.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {q.textResponses.slice(0, 8).map((r) => (
+                            <div
+                              key={r.value}
+                              className="flex items-start justify-between gap-4 rounded-md bg-muted/40 px-3 py-2 text-xs"
+                            >
+                              <span className="flex-1 text-foreground">
+                                {r.value}
+                              </span>
+                              {r.count > 1 && (
+                                <span className="shrink-0 text-muted-foreground">
+                                  ×{r.count}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {q.textResponses.length > 8 && (
+                            <p className="pl-1 text-xs text-muted-foreground">
+                              +{q.textResponses.length - 8} more unique
+                              responses
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          No responses yet
+                        </p>
+                      )
+                    ) : (
+                      q.optionStats.map((opt) => (
+                        <div key={opt.value} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className={safecareColor(opt.label)}>
+                              {opt.label}
+                            </span>
+                            <span className="text-muted-foreground">
+                              {opt.count} ({opt.percentage}%)
+                            </span>
+                          </div>
+                          <Progress
+                            value={opt.percentage}
+                            className={`h-1.5 ${safecareBarColor(opt.label)}`}
+                          />
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        </>
-      )}
-
-      <Separator />
-
-      {/* ── PER-QUESTION BREAKDOWN ──────────────────────────────────────────── */}
-      <div className="space-y-6">
-        <h2 className="text-base font-medium">Question Breakdown</h2>
-        {Object.entries(byCategory).map(([catId, qs]) => (
-          <div key={catId} className="space-y-4">
-            <h3 className="inline-block rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
-              {qs[0].category.name}
-            </h3>
-            {qs.map((q, idx) => (
-              <div key={q.id} className="space-y-3 rounded-lg border p-4">
-                <p className="text-sm font-medium">
-                  <span className="mr-2 text-muted-foreground">{idx + 1}.</span>
-                  {q.text}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {q.totalAnswers} response(s)
-                </p>
-                <div className="space-y-2">
-                  {q.type === "TEXT_INPUT" ? (
-                    q.textResponses && q.textResponses.length > 0 ? (
-                      <div className="space-y-1.5">
-                        {q.textResponses.slice(0, 8).map((r) => (
-                          <div key={r.value} className="flex items-start justify-between gap-4 rounded-md bg-muted/40 px-3 py-2 text-xs">
-                            <span className="flex-1 text-foreground">{r.value}</span>
-                            {r.count > 1 && (
-                              <span className="shrink-0 text-muted-foreground">×{r.count}</span>
-                            )}
-                          </div>
-                        ))}
-                        {q.textResponses.length > 8 && (
-                          <p className="text-xs text-muted-foreground pl-1">
-                            +{q.textResponses.length - 8} more unique responses
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">No responses yet</p>
-                    )
-                  ) : (
-                    q.optionStats.map((opt) => (
-                      <div key={opt.value} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className={safecareColor(opt.label)}>{opt.label}</span>
-                          <span className="text-muted-foreground">
-                            {opt.count} ({opt.percentage}%)
-                          </span>
-                        </div>
-                        <Progress value={opt.percentage} className={`h-1.5 ${safecareBarColor(opt.label)}`} />
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <Separator />
-
-      {/* ── SUBMISSIONS TABLE ────────────────────────────────────────────────── */}
-      <div className="space-y-4">
-        <h2 className="text-base font-medium">Individual Submissions</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Staff</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>PHC</TableHead>
-              <TableHead>Progress</TableHead>
-              <TableHead>Last Updated</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {submissions.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  className="py-10 text-center text-muted-foreground"
-                >
-                  No submissions yet
-                </TableCell>
-              </TableRow>
-            )}
-            {submissions.map((s) => (
-              <TableRow
-                key={s.id}
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => openUserDetail(s)}
-              >
-                <TableCell>
-                  {s.user ? (
-                    <>
-                      <p className="font-medium">
-                        {s.user.firstName} {s.user.lastName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.user.email}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground">
-                      Staff account removed
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {s.user?.roles.map((r, i) => (
-                      <Badge key={i} variant="outline" className="text-xs">
-                        {r.role.label}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm">
-                  {s.phc?.name ?? s.user?.phc?.name ?? "—"}
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <span className="text-xs text-muted-foreground">
-                      {s.answeredCount}/{s.totalQuestions}
-                    </span>
-                    <Progress
-                      value={
-                        (s.answeredCount / Math.max(s.totalQuestions, 1)) * 100
-                      }
-                      className="h-1.5 w-24"
-                    />
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {format(new Date(s.updatedAt), "dd MMM yyyy, HH:mm")}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          ))}
+        </TabsContent>
+      </Tabs>
 
       {/* ── USER DETAIL DIALOG ───────────────────────────────────────────────── */}
       <Dialog
@@ -405,9 +589,16 @@ export default function PeriodResultsPage() {
           <DialogHeader>
             <DialogTitle>
               {selectedUser?.phc?.name ?? "Facility"} &mdash;{" "}
-              {selectedUser?.user
-                ? `recorded by ${selectedUser.user.firstName} ${selectedUser.user.lastName}`
-                : "staff account removed"}
+              {selectedUser?.startedBy &&
+              selectedUser.startedBy.id !== selectedUser.user?.id
+                ? `started by ${selectedUser.startedBy.firstName} ${selectedUser.startedBy.lastName}, last saved by ${
+                    selectedUser.user
+                      ? `${selectedUser.user.firstName} ${selectedUser.user.lastName}`
+                      : "a removed staff account"
+                  }`
+                : selectedUser?.user
+                  ? `recorded by ${selectedUser.user.firstName} ${selectedUser.user.lastName}`
+                  : "staff account removed"}
             </DialogTitle>
           </DialogHeader>
           {detailLoading && (
@@ -452,4 +643,3 @@ export default function PeriodResultsPage() {
     </div>
   )
 }
-

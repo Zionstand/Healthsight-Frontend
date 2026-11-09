@@ -34,7 +34,7 @@ export const healthStaffNavLinks = [
     icon: IconLayoutDashboard,
   },
   {
-    label: "My Assessments",
+    label: "My assessments",
     slug: "/assessment",
     icon: IconClipboardText,
   },
@@ -44,7 +44,7 @@ export const healthStaffNavLinks = [
 
 const clinicalBase = [
   { label: "Dashboard", slug: "/dashboard", icon: IconLayoutDashboard },
-  { label: "My Assessments", slug: "/assessment", icon: IconClipboardText },
+  { label: "My assessments", slug: "/assessment", icon: IconClipboardText },
   { label: "Patients", slug: "/patients", icon: IconUserSearch },
 ]
 
@@ -87,32 +87,32 @@ export const adminNavLinks = [
     icon: IconLayoutDashboard,
   },
   {
-    label: "Users",
+    label: "Staff",
     slug: "/admin/users",
     icon: IconUsers,
   },
   {
-    label: "Pending Approvals",
+    label: "Pending approvals",
     slug: "/admin/pending-users",
     icon: IconCircleCheck,
   },
   {
-    label: "PHC Facilities",
+    label: "PHCs",
     slug: "/admin/phcs",
     icon: IconBuildingSkyscraper,
   },
   {
-    label: "PHC Map",
+    label: "PHC map",
     slug: "/admin/phcs/map",
     icon: IconMap,
   },
   {
-    label: "General Assessment",
+    label: "General assessment",
     slug: "/admin/assessment/general",
     icon: IconClipboardList,
   },
   {
-    label: "SafeCare Assessment",
+    label: "SafeCare assessment",
     slug: "/admin/assessment/safecare",
     icon: IconShieldCheck,
   },
@@ -122,7 +122,7 @@ export const adminNavLinks = [
     icon: IconUsersGroup,
   },
   // Clinical
-  { label: "SMS Logs", slug: "/admin/sms", icon: IconMessage },
+  { label: "SMS logs", slug: "/admin/sms", icon: IconMessage },
   // Clinical
   { label: "Patients", slug: "/patients", icon: IconUserSearch },
   { label: "Screenings", slug: "/screenings", icon: IconStethoscope },

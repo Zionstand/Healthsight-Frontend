@@ -1,14 +1,16 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { toast } from "sonner"
-import { Search, MoreHorizontal, CheckCircle, XCircle, Eye } from "lucide-react"
+import {
+  Check,
+  Loader2,
+  UserCheck,
+  X,
+} from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -20,13 +22,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -34,18 +29,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import api from "@/lib/api"
-import { useQueryClient } from "@tanstack/react-query"
-import { useApiQuery } from "@/lib/queries"
+import { useApiQuery, useInvalidate } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
-import { StatusBadge } from "@/components/StatusBadge"
+import {
+  LinkRow,
+  ListPagination,
+  ListToolbar,
+  SearchInput,
+  SegmentedFilter,
+  TableState,
+} from "@/components/list/ListKit"
+import { useListParams, useSearchParam } from "@/hooks/use-list-params"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +61,6 @@ type PendingUser = {
   district: { id: string; name: string } | null
 }
 
-
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -75,45 +69,61 @@ function formatDate(dateStr: string) {
   })
 }
 
+const COLUMNS = 5
+const PAGE_SIZE = 20
+
+type Paged<T> = { data: T[]; total: number; page: number; totalPages: number }
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PendingUsersPage() {
-  const router = useRouter()
+  const invalidate = useInvalidate()
 
-  const qc = useQueryClient()
-  const { data: allUsers, isPending: loading } = useApiQuery<PendingUser[]>("/admin/users", {
-    errorMessage: "Failed to load users",
+  // The queue is what admins come here for, so it opens on Pending.
+  const [params, setParams] = useListParams({ q: "", status: "PENDING", page: 1 })
+  const [search, setSearch] = useSearchParam(params.q, (q) => setParams({ q }))
+  const status: AccountStatus = params.status === "REJECTED" ? "REJECTED" : "PENDING"
+
+  // The server filters and pages; this screen only ever shows one status.
+  const { data, isPending: loading } = useApiQuery<Paged<PendingUser>>("/admin/users", {
+    params: { status, search: params.q, page: params.page, limit: PAGE_SIZE },
+    keepPrevious: true,
+    errorMessage: "Failed to load sign-ups",
   })
-  const users = useMemo(
-    () => (allUsers ?? []).filter((u) => ["PENDING", "REJECTED"].includes(u.accountStatus)),
-    [allUsers]
-  )
-  // Update the cached list in place so the change shows instantly.
-  const setUsers = (fn: (prev: PendingUser[]) => PendingUser[]) => {
-    qc.setQueryData<PendingUser[]>(["/admin/users"], (prev) => (prev ? fn(prev) : prev))
-    // Then confirm with the server; other admin screens share this list.
-    void qc.invalidateQueries({ queryKey: ["/admin/users"] })
-    void qc.invalidateQueries({ queryKey: ["/admin/stats"] })
+  // Tab counts: one row each is enough to read the total.
+  const { data: pendingCount } = useApiQuery<Paged<PendingUser>>("/admin/users", {
+    params: { status: "PENDING", limit: 1 },
+    silent: true,
+  })
+  const { data: rejectedCount } = useApiQuery<Paged<PendingUser>>("/admin/users", {
+    params: { status: "REJECTED", limit: 1 },
+    silent: true,
+  })
+  // Rows acted on in this visit disappear at once, before the refetch lands.
+  const [handled, setHandled] = useState<Set<string>>(new Set())
+  const users = (data?.data ?? []).filter((u) => !handled.has(u.id))
+  const refresh = (id: string) => {
+    setHandled((prev) => new Set(prev).add(id))
+    void invalidate("/admin/users", "/admin/stats")
   }
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<AccountStatus | "ALL">("ALL")
 
   const [rejectTarget, setRejectTarget] = useState<PendingUser | null>(null)
   const [rejectReason, setRejectReason] = useState("")
   const [rejectLoading, setRejectLoading] = useState(false)
-  const [approveLoading, setApproveLoading] = useState(false)
-
+  const [approvingId, setApprovingId] = useState<string | null>(null)
 
   async function handleApprove(user: PendingUser) {
-    setApproveLoading(true)
+    setApprovingId(user.id)
     try {
       await api.patch(`/admin/users/${user.username}/approve`)
-      setUsers((prev) => prev.filter((u) => u.id !== user.id))
-      toast.success(`${user.firstName} ${user.lastName} approved`)
+      refresh(user.id)
+      toast.success(`${user.firstName} ${user.lastName} approved`, {
+        description: "They can sign in now.",
+      })
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Failed to approve"))
+      toast.error(apiErrorMessage(err, "Couldn't approve this account"))
     } finally {
-      setApproveLoading(false)
+      setApprovingId(null)
     }
   }
 
@@ -124,173 +134,152 @@ export default function PendingUsersPage() {
       await api.patch(`/admin/users/${rejectTarget.username}/reject`, {
         reason: rejectReason.trim(),
       })
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === rejectTarget.id ? { ...u, accountStatus: "REJECTED" } : u
-        )
-      )
+      refresh(rejectTarget.id)
       toast.success(`${rejectTarget.firstName} ${rejectTarget.lastName} rejected`)
       setRejectTarget(null)
       setRejectReason("")
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Failed to reject"))
+      toast.error(apiErrorMessage(err, "Couldn't reject this account"))
     } finally {
       setRejectLoading(false)
     }
   }
 
-  const filtered = users.filter((u) => {
-    const matchesSearch = `${u.firstName} ${u.lastName} ${u.email}`
-      .toLowerCase()
-      .includes(search.toLowerCase())
-    const matchesStatus = statusFilter === "ALL" || u.accountStatus === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  const term = params.q.trim()
+  const filtered = users
 
-  const statusCounts = {
-    ALL: users.length,
-    PENDING: users.filter((u) => u.accountStatus === "PENDING").length,
-    REJECTED: users.filter((u) => u.accountStatus === "REJECTED").length,
-  }
+  const emptyTitle = term
+    ? "No sign-ups match your search"
+    : status === "PENDING"
+      ? "You're all caught up"
+      : "No rejected sign-ups"
+  const emptyDescription = term
+    ? "Try a different name or email."
+    : status === "PENDING"
+      ? "New staff who sign up will appear here for approval."
+      : undefined
 
   return (
-    <>
+    <div className="space-y-4">
       <PageHeader
         back
-        title="Pending Registrations"
-        description="Review and approve self-registered user accounts"
+        title="Pending approvals"
+        description="Staff who signed up themselves. Approve them to let them sign in."
       />
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v as AccountStatus | "ALL")}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All ({statusCounts.ALL})</SelectItem>
-            <SelectItem value="PENDING">Pending ({statusCounts.PENDING})</SelectItem>
-            <SelectItem value="REJECTED">Rejected ({statusCounts.REJECTED})</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <ListToolbar className="sm:justify-between">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by name or email" />
+        <SegmentedFilter
+          label="Status"
+          value={status}
+          onChange={(v) => setParams({ status: v })}
+          options={[
+            { value: "PENDING", label: "Pending", count: pendingCount?.total },
+            { value: "REJECTED", label: "Rejected", count: rejectedCount?.total },
+          ]}
+        />
+      </ListToolbar>
 
-      {/* Table */}
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role(s)</TableHead>
-              <TableHead>PHC</TableHead>
-              <TableHead>District</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Registered</TableHead>
-              <TableHead className="w-12" />
+              <TableHead className="hidden md:table-cell">Role</TableHead>
+              <TableHead className="hidden lg:table-cell">Location</TableHead>
+              <TableHead className="hidden sm:table-cell">Signed up</TableHead>
+              <TableHead className="text-right">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <TableRow key={i}>
-                  {/* Name, Email, Roles, PHC, District, Status, Registered, Actions */}
-                  {["w-32", "w-44", "w-28", "w-32", "w-24", "w-16", "w-20", "w-8"].map((w, j) => (
-                    <TableCell key={j}>
-                      <Skeleton className={`h-4 ${w}`} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="py-12 text-center text-sm text-muted-foreground"
-                >
-                  No pending registrations
-                </TableCell>
-              </TableRow>
-            ) : (
+            <TableState
+              loading={loading}
+              empty={filtered.length === 0}
+              columns={COLUMNS}
+              rows={6}
+              icon={<UserCheck />}
+              title={emptyTitle}
+              description={emptyDescription}
+              action={
+                term ? (
+                  <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+                    Clear search
+                  </Button>
+                ) : undefined
+              }
+            />
+            {!loading &&
               filtered.map((user) => {
+                const role = user.roles.map((ur) => ur.role.label).join(", ") || "—"
+                const pending = user.accountStatus === "PENDING"
+                const approving = approvingId === user.id
                 return (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      {user.firstName} {user.lastName}
+                  <LinkRow key={user.id} href={`/admin/users/${user.username}`}>
+                    <TableCell className="min-w-0 whitespace-normal break-words">
+                      <p className="font-medium">
+                        {user.firstName} {user.lastName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                      {/* On phones the other columns are hidden; keep the essentials here. */}
+                      <p className="mt-0.5 text-xs text-muted-foreground md:hidden">
+                        {[role, user.phc?.name].filter(Boolean).join(" · ")}
+                      </p>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                    <TableCell>
-                      {user.roles.map((ur) => ur.role.label).join(", ") || "—"}
+                    <TableCell className="hidden max-w-56 md:table-cell">
+                      <p className="truncate">{role}</p>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {user.phc?.name ?? "—"}
+                    <TableCell className="hidden lg:table-cell">
+                      <p>{user.phc?.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[user.lga?.name, user.district?.name].filter(Boolean).join(" · ")}
+                      </p>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {user.district?.name ?? "—"}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={user.accountStatus} />
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="hidden text-muted-foreground sm:table-cell">
                       {formatDate(user.createdAt)}
                     </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreHorizontal className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => router.push(`/admin/users/${user.username}`)}
+                    <TableCell className="text-right">
+                      {pending && (
+                        <div className="flex justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setRejectTarget(user)}
+                            disabled={approving}
+                            aria-label={`Reject ${user.firstName} ${user.lastName}`}
                           >
-                            <Eye className="mr-2 size-4" />
-                            View details
-                          </DropdownMenuItem>
-
-                          {user.accountStatus === "PENDING" && (
-                            <>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => handleApprove(user)}
-                                disabled={approveLoading}
-                                className="text-brand-verdant-600 focus:text-brand-verdant-600"
-                              >
-                                <CheckCircle className="mr-2 size-4" />
-                                Approve
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => setRejectTarget(user)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <XCircle className="mr-2 size-4" />
-                                Reject
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            <X />
+                            <span className="hidden xl:inline">Reject</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleApprove(user)}
+                            disabled={approving}
+                            aria-label={`Approve ${user.firstName} ${user.lastName}`}
+                          >
+                            {approving ? <Loader2 className="animate-spin" /> : <Check />}
+                            <span className="hidden xl:inline">Approve</span>
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
-                  </TableRow>
+                  </LinkRow>
                 )
-              })
-            )}
+              })}
           </TableBody>
         </Table>
       </div>
+
+      <ListPagination
+        page={params.page}
+        totalPages={data?.totalPages ?? 1}
+        total={data?.total ?? 0}
+        pageSize={PAGE_SIZE}
+        onPageChange={(page) => setParams({ page })}
+        noun="sign-up"
+      />
 
       {/* Reject dialog */}
       <Dialog
@@ -304,22 +293,24 @@ export default function PendingUsersPage() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Reject Registration</DialogTitle>
+            <DialogTitle>Reject sign-up</DialogTitle>
             <DialogDescription>
-              Provide a reason for rejecting{" "}
+              Say why you are rejecting{" "}
               <span className="font-medium text-foreground">
                 {rejectTarget?.firstName} {rejectTarget?.lastName}
               </span>
-              . They may be notified of this reason.
+              . They may be told this reason.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>Reason</Label>
+            <Label htmlFor="reject-reason">Reason</Label>
             <Textarea
-              placeholder="e.g. Incomplete credentials, duplicate account..."
+              id="reject-reason"
+              placeholder="e.g. Incomplete credentials, duplicate account…"
               rows={3}
               value={rejectReason}
               onChange={(e) => setRejectReason(e.target.value)}
+              autoFocus
             />
           </div>
           <DialogFooter>
@@ -337,11 +328,12 @@ export default function PendingUsersPage() {
               disabled={!rejectReason.trim() || rejectLoading}
               onClick={handleReject}
             >
-              {rejectLoading ? "Rejecting..." : "Reject"}
+              {rejectLoading && <Loader2 className="animate-spin" />}
+              {rejectLoading ? "Rejecting…" : "Reject"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

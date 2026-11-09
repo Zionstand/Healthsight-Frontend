@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import dynamic from "next/dynamic"
-import { Search, Building2, Plus, Pencil, Trash2, Map as MapIcon, MapPin, X } from "lucide-react"
+import { Building2, Plus, Pencil, Trash2, Map as MapIcon, MapPin, X } from "lucide-react"
 import Link from "next/link"
 
 const PhcMapPicker = dynamic(
@@ -16,9 +16,7 @@ import { toast } from "sonner"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -61,9 +59,16 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import api from "@/lib/api"
-import { IconPlus } from "@tabler/icons-react"
 import { useApiQuery, useApiState, useInvalidate } from "@/lib/queries"
 import { apiErrorMessage } from "@/lib/api-error"
+import { StatusBadge } from "@/components/StatusBadge"
+import {
+  ListPagination,
+  ListToolbar,
+  SearchInput,
+  TableState,
+} from "@/components/list/ListKit"
+import { useListParams, useSearchParam } from "@/hooks/use-list-params"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -353,7 +358,9 @@ function PhcFormSheet({
   )
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+/// ── Page ──────────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 25
 
 export default function AdminPhcsPage() {
   const invalidate = useInvalidate()
@@ -368,8 +375,9 @@ export default function AdminPhcsPage() {
     setPhcData((prev) => fn(prev ?? []))
     void invalidate("/locations/phcs", "/admin/stats")
   }
-  const [search, setSearch] = useState("")
-  const [districtFilter, setDistrictFilter] = useState("ALL")
+
+  const [params, setParams] = useListParams({ page: 1, q: "", lga: "", district: "" })
+  const [search, setSearch] = useSearchParam(params.q, (q) => setParams({ q }))
 
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editing, setEditing] = useState<Phc | null>(null)
@@ -377,20 +385,42 @@ export default function AdminPhcsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Phc | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-
   const districts = Array.from(
     new Map(phcs.map((p) => [p.lga.district.id, p.lga.district.name])).entries()
   ).sort((a, b) => a[1].localeCompare(b[1]))
+  const lgas = Array.from(
+    new Map(
+      phcs
+        .filter((p) => !params.district || p.lga.district.id === params.district)
+        .map((p) => [p.lga.id, p.lga.name])
+    ).entries()
+  ).sort((a, b) => a[1].localeCompare(b[1]))
 
-  const filtered = phcs.filter((p) => {
-    const matchesSearch =
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.lga.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.lga.district.name.toLowerCase().includes(search.toLowerCase())
-    const matchesDistrict =
-      districtFilter === "ALL" || p.lga.district.id === districtFilter
-    return matchesSearch && matchesDistrict
-  })
+  const term = params.q.trim().toLowerCase()
+  const filtered = phcs
+    .filter((p) => {
+      const matchesSearch =
+        !term ||
+        p.name.toLowerCase().includes(term) ||
+        p.lga.name.toLowerCase().includes(term) ||
+        (p.address ?? "").toLowerCase().includes(term)
+      return (
+        matchesSearch &&
+        (!params.district || p.lga.district.id === params.district) &&
+        (!params.lga || p.lga.id === params.lga)
+      )
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const page = Math.min(params.page, totalPages)
+  const shown = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const filtering = !!term || !!params.lga || !!params.district
+
+  function openEditor(phc: Phc | null) {
+    setEditing(phc)
+    setSheetOpen(true)
+  }
 
   function handleSaved(saved: Phc) {
     setPhcs((prev) => {
@@ -409,137 +439,171 @@ export default function AdminPhcsPage() {
       toast.success(`${deleteTarget.name} deleted`)
       setDeleteTarget(null)
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Failed to delete PHC"))
+      toast.error(apiErrorMessage(err, "Couldn't delete this PHC"))
     } finally {
       setDeleteLoading(false)
     }
   }
 
   return (
-    <>
+    <div className="space-y-4">
       <PageHeader
         back
         title="PHCs"
-        description={
-          loading ? undefined : `${phcs.length} Primary Health Care centres`
-        }
+        description="The primary health centres staff are assigned to and assessments are recorded for."
         action={
           <div className="flex gap-2">
             <Button variant="outline" asChild>
               <Link href="/admin/phcs/map">
-                <MapIcon className="mr-2 h-4 w-4" />
-                Map view
+                <MapIcon />
+                <span className="hidden sm:inline">Map view</span>
               </Link>
             </Button>
-            <Button
-              onClick={() => {
-                setEditing(null)
-                setSheetOpen(true)
-              }}
-            >
-              <IconPlus />
+            <Button onClick={() => openEditor(null)}>
+              <Plus />
               Add PHC
             </Button>
           </div>
         }
       />
 
-      {/* Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name, LGA or district..."
-            className="pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <Select value={districtFilter} onValueChange={setDistrictFilter}>
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="All Districts" />
+      <ListToolbar>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by name, LGA or address" />
+        {/* Only worth showing once there is more than one district. */}
+        {districts.length > 1 && (
+          <Select
+            value={params.district || "ALL"}
+            onValueChange={(v) => setParams({ district: v === "ALL" ? "" : v, lga: "" })}
+          >
+            <SelectTrigger className="w-full sm:w-44" aria-label="District">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All districts</SelectItem>
+              {districts.map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select
+          value={params.lga || "ALL"}
+          onValueChange={(v) => setParams({ lga: v === "ALL" ? "" : v })}
+        >
+          <SelectTrigger className="w-full sm:w-56" aria-label="Local government">
+            <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All Districts</SelectItem>
-            {districts.map(([id, name]) => (
+            <SelectItem value="ALL">All local governments</SelectItem>
+            {lgas.map(([id, name]) => (
               <SelectItem key={id} value={id}>
                 {name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      </div>
+      </ListToolbar>
 
-      {/* Table */}
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>PHC Name</TableHead>
-              <TableHead>LGA</TableHead>
-              <TableHead>District</TableHead>
-              <TableHead>Active Staff</TableHead>
-              <TableHead>Added</TableHead>
-              <TableHead className="w-24" />
+              <TableHead>PHC</TableHead>
+              <TableHead className="hidden md:table-cell">Local government</TableHead>
+              <TableHead className="hidden sm:table-cell">Staff</TableHead>
+              <TableHead className="hidden lg:table-cell">Map</TableHead>
+              <TableHead className="hidden lg:table-cell">Added</TableHead>
+              <TableHead className="w-24">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading ? (
-              Array.from({ length: 10 }).map((_, i) => (
-                <TableRow key={i}>
-                  {/* PHC Name, LGA, District, Staff, Added, Actions */}
-                  {["w-40", "w-28", "w-24", "w-8", "w-20", "w-16"].map((w, j) => (
-                    <TableCell key={j}>
-                      <Skeleton className={`h-4 ${w}`} />
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
-            ) : filtered.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-16 text-center">
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <Building2 className="size-8 opacity-40" />
-                    <p className="text-sm">No PHCs found</p>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filtered.map((phc) => (
-                <TableRow key={phc.id}>
-                  <TableCell className="font-medium">{phc.name}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {phc.lga.name}
+            <TableState
+              loading={loading}
+              empty={filtered.length === 0}
+              columns={6}
+              icon={<Building2 />}
+              title={filtering ? "No PHCs match these filters" : "No PHCs yet"}
+              description={
+                filtering
+                  ? "Try a different name, or another local government."
+                  : "Add the primary health centres in your district."
+              }
+              action={
+                filtering ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearch("")
+                      setParams({ q: "", lga: "", district: "" })
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => openEditor(null)}>
+                    <Plus />
+                    Add PHC
+                  </Button>
+                )
+              }
+            />
+            {!loading &&
+              shown.map((phc) => (
+                <TableRow
+                  key={phc.id}
+                  tabIndex={0}
+                  className="cursor-pointer focus-visible:bg-muted/60 focus-visible:outline-none"
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("a,button")) return
+                    openEditor(phc)
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.target === e.currentTarget && openEditor(phc)}
+                >
+                  <TableCell className="min-w-0 whitespace-normal break-words">
+                    <p className="font-medium">{phc.name}</p>
+                    <p className="text-xs text-muted-foreground md:hidden">
+                      {phc.lga.name} · {phc._count.users} staff
+                    </p>
+                    {phc.address && (
+                      <p className="hidden max-w-xs truncate text-xs text-muted-foreground md:block">
+                        {phc.address}
+                      </p>
+                    )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {phc.lga.district.name}
+                  <TableCell className="hidden md:table-cell">
+                    <p>{phc.lga.name}</p>
+                    <p className="text-xs text-muted-foreground">{phc.lga.district.name}</p>
                   </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="secondary"
-                      className={
-                        phc._count.users > 0
-                          ? "bg-brand-verdant-100 text-brand-verdant-700 hover:bg-brand-verdant-100"
-                          : "bg-muted text-muted-foreground hover:bg-muted"
-                      }
-                    >
-                      {phc._count.users} staff
-                    </Badge>
+                  <TableCell className="hidden tabular-nums sm:table-cell">
+                    {phc._count.users > 0 ? (
+                      phc._count.users
+                    ) : (
+                      <span className="text-muted-foreground">None</span>
+                    )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="hidden lg:table-cell">
+                    {phc.latitude != null ? (
+                      <StatusBadge status="PINNED" label="Pinned" tone="success" />
+                    ) : (
+                      <StatusBadge status="NO_PIN" label="No pin" tone="neutral" />
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden text-muted-foreground lg:table-cell">
                     {formatDate(phc.createdAt)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
                         className="size-8"
-                        onClick={() => {
-                          setEditing(phc)
-                          setSheetOpen(true)
-                        }}
+                        aria-label={`Edit ${phc.name}`}
+                        onClick={() => openEditor(phc)}
                       >
                         <Pencil className="size-3.5" />
                       </Button>
@@ -547,6 +611,7 @@ export default function AdminPhcsPage() {
                         variant="ghost"
                         size="icon"
                         className="size-8 text-destructive hover:text-destructive"
+                        aria-label={`Delete ${phc.name}`}
                         onClick={() => setDeleteTarget(phc)}
                       >
                         <Trash2 className="size-3.5" />
@@ -554,17 +619,19 @@ export default function AdminPhcsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
+              ))}
           </TableBody>
         </Table>
       </div>
 
-      {!loading && filtered.length > 0 && (
-        <p className="mt-3 text-xs text-muted-foreground">
-          Showing {filtered.length} of {phcs.length} PHCs
-        </p>
-      )}
+      <ListPagination
+        page={page}
+        totalPages={totalPages}
+        total={filtered.length}
+        pageSize={PAGE_SIZE}
+        onPageChange={(p) => setParams({ page: p })}
+        noun="PHC"
+      />
 
       {/* Create / Edit Sheet */}
       <PhcFormSheet
@@ -585,24 +652,22 @@ export default function AdminPhcsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. The PHC will be permanently removed.
-              PHCs with assigned staff cannot be deleted.
+              This can&apos;t be undone. PHCs with staff assigned can&apos;t be deleted; move the
+              staff first.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteLoading}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleteLoading}
               className="bg-destructive text-white hover:bg-destructive/90"
             >
-              {deleteLoading ? "Deleting..." : "Delete"}
+              {deleteLoading ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   )
 }

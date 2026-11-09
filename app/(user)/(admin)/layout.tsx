@@ -14,23 +14,24 @@ import { useDocumentTitle } from "@/hooks/use-document-title"
 // One place to title every admin route (the admin layout is a client component,
 // so per-page metadata exports aren't available here).
 const ADMIN_TITLES: Record<string, string> = {
-  "/admin/dashboard": "Admin Dashboard",
-  "/admin/analytics": "Assessment Analysis",
+  "/admin/dashboard": "Dashboard",
+  "/admin/analytics": "Assessment analysis",
   "/admin/users": "Staff",
-  "/admin/pending-users": "Pending Approvals",
+  "/admin/pending-users": "Pending approvals",
   "/admin/phcs": "PHCs",
-  "/admin/phcs/map": "PHC Map",
-  "/admin/roles": "Roles & Permissions",
+  "/admin/phcs/map": "PHC map",
+  "/admin/roles": "Roles",
   "/admin/sms": "SMS",
   "/admin/directors": "Directors",
-  "/admin/assessment/general": "General Assessment",
-  "/admin/assessment/safecare": "SafeCare Assessment",
+  "/admin/assessment/general": "General assessment",
+  "/admin/assessment/safecare": "SafeCare assessment",
 }
 
-function resolveAdminTitle(pathname: string): string {
+function resolveAdminTitle(pathname: string): string | null {
   if (ADMIN_TITLES[pathname]) return ADMIN_TITLES[pathname]
-  if (pathname.startsWith("/admin/users/")) return "User Profile"
-  if (pathname.startsWith("/admin/assessment/")) return "Assessment Results"
+  if (pathname.startsWith("/admin/users/")) return "Staff profile"
+  // Results pages name themselves after their period once it loads.
+  if (pathname.startsWith("/admin/assessment/")) return null
   return "Admin Portal"
 }
 

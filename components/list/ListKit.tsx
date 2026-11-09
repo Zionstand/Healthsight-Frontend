@@ -60,6 +60,65 @@ export function ListToolbar({ children, className }: { children: React.ReactNode
   )
 }
 
+// ── Segmented filter ─────────────────────────────────────────────────────────
+
+/**
+ * A short, mutually exclusive filter shown as tabs with counts, e.g.
+ * Pending (3) · Rejected (1) · All (4). Use a Select for longer lists.
+ */
+export function SegmentedFilter<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+  className,
+}: {
+  value: T
+  onChange: (value: T) => void
+  options: { value: T; label: string; count?: number }[]
+  label: string
+  className?: string
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cn("inline-flex w-full rounded-lg border bg-muted/50 p-0.5 sm:w-auto", className)}
+    >
+      {options.map((o) => {
+        const active = o.value === value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors sm:flex-none",
+              active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {o.label}
+            {o.count !== undefined && (
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs tabular-nums",
+                  active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                )}
+              >
+                {o.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Empty ────────────────────────────────────────────────────────────────────
 
 export function EmptyState({
@@ -111,12 +170,17 @@ export function TableState({
     return (
       <>
         {Array.from({ length: rows }).map((_, i) => (
-          <TableRow key={i} className="hover:bg-transparent">
-            {Array.from({ length: columns }).map((_, j) => (
-              <TableCell key={j}>
-                <Skeleton className={cn("h-4", j === 0 ? "w-3/4" : "w-full max-w-32")} />
-              </TableCell>
-            ))}
+          <TableRow key={i} className="hover:bg-transparent" aria-hidden>
+            <TableCell colSpan={columns} className="py-3">
+              <div className="flex items-center gap-6">
+                <div className="w-2/5 space-y-1.5 sm:w-1/4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
+                </div>
+                <Skeleton className="hidden h-4 flex-1 sm:block" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            </TableCell>
           </TableRow>
         ))}
       </>

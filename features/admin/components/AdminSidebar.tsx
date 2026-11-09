@@ -45,7 +45,7 @@ import { useSignout } from "@/hooks/use-signout"
 
 export const managementLinks = [
   { label: "Dashboard", href: "/admin/dashboard", icon: IconLayoutDashboard },
-  { label: "Assessment Analysis", href: "/admin/analytics", icon: IconChartBar },
+  { label: "Assessment analysis", href: "/admin/analytics", icon: IconChartBar },
   { label: "Staff", href: "/admin/users", icon: IconUsers },
   { label: "Roles", href: "/admin/roles", icon: IconShield },
   { label: "PHCs", href: "/admin/phcs", icon: IconBuildingHospital },
@@ -63,12 +63,12 @@ export const operationsLinks = [
 
 export const settingsLinks = [
   {
-    label: "General Assessment",
+    label: "General assessment",
     href: "/admin/assessment/general",
     icon: IconCalendarStats,
   },
   {
-    label: "SafeCare Assessment",
+    label: "SafeCare assessment",
     href: "/admin/assessment/safecare",
     icon: IconCalendarCheck,
   },

@@ -80,7 +80,7 @@ export default function SmsAdminPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="SMS Logs"
+        title="SMS logs"
         description="Delivery log for all outbound system SMS messages"
       />
 

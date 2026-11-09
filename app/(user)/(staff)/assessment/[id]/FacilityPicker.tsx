@@ -30,6 +30,7 @@ export type FacilitySubmission = {
   createdAt: string
   updatedAt: string
   lastSavedBy: { firstName: string; lastName: string } | null
+  startedBy: { firstName: string; lastName: string } | null
   daysLeft: number
 }
 
@@ -211,13 +212,7 @@ export function FacilityPicker({
                 <p className="font-medium">
                   {phc.name} already has an assessment for this period.
                 </p>
-                <p>
-                  Started {format(new Date(s.createdAt), "dd MMM yyyy")}
-                  {s.lastSavedBy &&
-                    `, last saved by ${s.lastSavedBy.firstName} ${s.lastSavedBy.lastName}`}{" "}
-                  on {format(new Date(s.updatedAt), "dd MMM yyyy, HH:mm")}. {s.answeredCount} of{" "}
-                  {total} questions answered.
-                </p>
+                <p>{whoDidWhat(s)} {s.answeredCount} of {total} questions answered.</p>
                 <p>
                   {editingClosed
                     ? "Its 7-day editing window has closed, so you can review it but not change it."
@@ -225,7 +220,7 @@ export function FacilityPicker({
                 </p>
               </div>
             ) : (
-              <p>No one has started {phc.name}'s assessment for this period yet.</p>
+              <p>No one has started {phc.name}&apos;s assessment for this period yet.</p>
             )}
           </div>
         )}
@@ -242,6 +237,24 @@ export function FacilityPicker({
       </DialogContent>
     </Dialog>
   )
+}
+
+const fullName = (u: { firstName: string; lastName: string } | null) =>
+  u ? `${u.firstName} ${u.lastName}` : null
+
+/** "Started 13 Jul 2026 by A, last saved by B on 14 Jul 2026, 10:02." */
+export function whoDidWhat(
+  s: Pick<FacilitySubmission, "createdAt" | "updatedAt" | "lastSavedBy" | "startedBy">,
+  meId?: string,
+  ids?: { startedBy?: string; lastSavedBy?: string }
+) {
+  const you = (id: string | undefined, name: string | null) => (meId && id === meId ? "you" : name)
+  const starter = you(ids?.startedBy, fullName(s.startedBy))
+  const saver = you(ids?.lastSavedBy, fullName(s.lastSavedBy))
+  const started = `Started ${format(new Date(s.createdAt), "dd MMM yyyy")}${starter ? ` by ${starter}` : ""}`
+  const edited = new Date(s.updatedAt).getTime() - new Date(s.createdAt).getTime() > 60_000
+  if (!edited && (!saver || saver === starter)) return `${started}.`
+  return `${started}, last saved${saver ? ` by ${saver}` : ""} on ${format(new Date(s.updatedAt), "dd MMM yyyy, HH:mm")}.`
 }
 
 const DONE =

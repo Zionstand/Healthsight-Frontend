@@ -462,7 +462,7 @@ export default function AdminUsersPage() {
               users.map((user) => {
                 return (
                   <LinkRow key={user.id} href={`/admin/users/${user.username}`}>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-normal break-words">
                       <p className="font-medium">
                         {user.firstName} {user.lastName}
                       </p>
