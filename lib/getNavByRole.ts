@@ -3,12 +3,18 @@ import { adminNavLinks, healthStaffNavLinks } from "@/constants/nav-links"
 import { roleNavMap } from "@/constants/roleNavMap"
 import { IconChartBar } from "@tabler/icons-react"
 
-// Every staff role can see the Power BI assessment report.
+// Power BI assessment report. Admins reach it from the admin sidebar
+// (/admin/analytics); on the staff side only directors get the link. The
+// backend enforces the same rule (GET /analytics/powerbi).
 const analyticsLink = { label: "Assessment Analysis", slug: "/analytics", icon: IconChartBar }
+
+export const canViewAnalytics = (user?: User | null) =>
+  !!user?.roles?.some((r) => r.name === "ADMIN" || r.name === "DIRECTOR")
 
 export function getNavByRole(user?: User | null) {
   const links = staffNav(user)
-  return user?.roles?.some((r) => r.name === "ADMIN") ? links : [...links, analyticsLink]
+  const isAdmin = user?.roles?.some((r) => r.name === "ADMIN")
+  return !isAdmin && canViewAnalytics(user) ? [...links, analyticsLink] : links
 }
 
 function staffNav(user?: User | null) {

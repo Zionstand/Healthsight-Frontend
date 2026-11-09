@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { isPrivilegedRole } from "@/constants/roles"
 import {
   Table,
   TableBody,
@@ -114,7 +115,9 @@ export default function AdminRolesPage() {
         const { data } = await api.patch(`/roles/${editTarget.id}`, {
           label: form.label.trim(),
           description: form.description.trim() || null,
-          isAvailableForRegistration: form.isAvailableForRegistration,
+          isAvailableForRegistration: isPrivilegedRole(editTarget.name)
+            ? false
+            : form.isAvailableForRegistration,
         })
         setRoles((prev) =>
           prev.map((r) => (r.id === editTarget.id ? { ...r, ...data } : r))
@@ -357,11 +360,18 @@ export default function AdminRolesPage() {
                   Available for Registration
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Allow staff to select this role during sign-up
+                  {isPrivilegedRole(editTarget?.name)
+                    ? "Administrative role — can only be assigned by an admin"
+                    : "Allow staff to select this role during sign-up"}
                 </p>
               </div>
               <Switch
-                checked={form.isAvailableForRegistration}
+                checked={
+                  isPrivilegedRole(editTarget?.name)
+                    ? false
+                    : form.isAvailableForRegistration
+                }
+                disabled={isPrivilegedRole(editTarget?.name)}
                 onCheckedChange={(v) =>
                   setForm((f) => ({ ...f, isAvailableForRegistration: v }))
                 }

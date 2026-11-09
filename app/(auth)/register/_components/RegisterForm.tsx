@@ -34,7 +34,6 @@ import {
   FlagComponent,
 } from "@/components/PhoneNumberInput"
 import api from "@/lib/api"
-import { useAuth } from "@/store/useAuth"
 import { Logo } from "@/components/Logo"
 
 type RoleOption = { id: string; name: string; label: string }
@@ -62,8 +61,6 @@ type FormValues = z.infer<typeof schema>
 type Location = { id: string; name: string }
 
 export const RegisterForm = () => {
-  const { setUser } = useAuth()
-
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -140,9 +137,8 @@ export const RegisterForm = () => {
         ...(values.lgaId && { lgaId: values.lgaId }),
         ...(values.phcId && { phcId: values.phcId }),
       }
-      const { data } = await api.post("/auth/register", payload)
-      localStorage.setItem("access_token", data.accessToken)
-      setUser(data.user)
+      // No session yet: the account stays pending until an admin approves it.
+      await api.post("/auth/register", payload)
       toast.success("Registration successful")
       setSuccess(true)
     } catch (err: any) {
