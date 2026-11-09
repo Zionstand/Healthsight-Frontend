@@ -8,12 +8,6 @@ export const metadata: Metadata = {
   alternates: { canonical: "/register" },
 }
 
-const page = () => {
-  return (
-    <div className="flex items-center justify-center">
-      <RegisterForm />
-    </div>
-  )
-}
+const page = () => <RegisterForm />
 
 export default page

@@ -1,16 +1,14 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Image from "next/image"
 import Link from "next/link"
-import { Eye, EyeOff } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import * as RPNInput from "react-phone-number-input"
-import { useForm, Controller } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,7 +32,10 @@ import {
   FlagComponent,
 } from "@/components/PhoneNumberInput"
 import api from "@/lib/api"
-import { Logo } from "@/components/Logo"
+import { apiErrorMessage } from "@/lib/api-error"
+import { AuthShell, authLabel, stagger } from "../../_components/AuthShell"
+import { PasswordInput } from "../../_components/PasswordInput"
+import { SubmitButton } from "../../_components/SubmitButton"
 
 type RoleOption = { id: string; name: string; label: string }
 
@@ -60,9 +61,25 @@ type FormValues = z.infer<typeof schema>
 
 type Location = { id: string; name: string }
 
+const BRAND = {
+  headline: "Join the district health network.",
+  message:
+    "Create your account to take part in facility assessments and patient care across the district.",
+  note: "Every new account is reviewed by a district administrator before it can sign in.",
+}
+
+function SectionLabel({ children, n }: { children: React.ReactNode; n: number }) {
+  return (
+    <p
+      className="animate-brand-fade-up font-ui text-xs font-medium tracking-[0.18em] text-brand-sky-700 uppercase dark:text-brand-sky-300"
+      style={stagger(n)}
+    >
+      {children}
+    </p>
+  )
+}
+
 export const RegisterForm = () => {
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [success, setSuccess] = useState(false)
 
   const [districts, setDistricts] = useState<Location[]>([])
@@ -87,6 +104,9 @@ export const RegisterForm = () => {
       confirmPassword: "",
     },
   })
+
+  const districtId = useWatch({ control: form.control, name: "districtId" })
+  const lgaId = useWatch({ control: form.control, name: "lgaId" })
 
   useEffect(() => {
     api.get("/locations/districts").then((res) => setDistricts(res.data))
@@ -141,59 +161,54 @@ export const RegisterForm = () => {
       await api.post("/auth/register", payload)
       toast.success("Registration successful")
       setSuccess(true)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg)
-          ? msg.join(", ")
-          : msg || "Registration failed. Please try again."
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Registration failed. Please try again."))
     }
   }
 
   if (success) {
     return (
-      <Card className="w-full max-w-[500px] shadow-lg">
-        <CardContent className="flex flex-col items-center gap-4 px-10 py-12 text-center">
-          <Image
-            src="/assets/images/logo.jpeg"
-            alt="Lagos State Health District"
-            width={100}
-            height={100}
-            className="rounded-full object-cover"
-          />
-          <h2 className="text-lg font-semibold">Registration Successful</h2>
-          <p className="text-sm text-muted-foreground">
-            Your account has been submitted for admin approval. You will be
-            notified once your account is activated.
-          </p>
-          <Link href="/" className="text-sm text-primary hover:underline">
-            Back to Login
-          </Link>
-        </CardContent>
-      </Card>
+      <AuthShell
+        brand={BRAND}
+        icon={<CheckCircle2 className="h-6 w-6" />}
+        title="Registration received"
+        description="Your account has been sent to a district administrator for approval. You'll be notified as soon as it's activated."
+      >
+        <Button
+          asChild
+          className="animate-brand-fade-up mt-8 h-12 w-full font-ui text-base font-semibold"
+          style={stagger(1)}
+        >
+          <Link href="/">Back to sign in</Link>
+        </Button>
+      </AuthShell>
     )
   }
 
   return (
-    <Card className="w-full max-w-3xl shadow-lg">
-      <CardContent className="py-10">
-        <div className="mb-8 flex justify-center">
-          <Logo />
-        </div>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            {/* First Name / Last Name */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <AuthShell
+      wide
+      brand={BRAND}
+      title="Create your account"
+      description="Register as district health staff. An administrator will approve your account."
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-6">
+          {/* ── Your details ── */}
+          <div className="space-y-4">
+            <SectionLabel n={1}>Your details</SectionLabel>
+            <div
+              className="animate-brand-fade-up grid grid-cols-1 gap-4 sm:grid-cols-2"
+              style={stagger(1)}
+            >
               <FormField
                 control={form.control}
                 name="firstName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">First Name</FormLabel>
+                    <FormLabel className={authLabel}>First name</FormLabel>
                     <FormControl>
-                      <Input placeholder="John" {...field} />
+                      <Input className="h-11" placeholder="John" autoComplete="given-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -204,28 +219,26 @@ export const RegisterForm = () => {
                 name="lastName"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">Last Name</FormLabel>
+                    <FormLabel className={authLabel}>Last name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Doe" {...field} />
+                      <Input className="h-11" placeholder="Doe" autoComplete="family-name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
-
-            {/* Email / Phone Number */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">Email</FormLabel>
+                    <FormLabel className={authLabel}>Email</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
-                        placeholder="example@lagosstate.gov.ng"
+                        className="h-11"
+                        placeholder="you@lagosstate.gov.ng"
+                        autoComplete="email"
                         {...field}
                       />
                     </FormControl>
@@ -238,9 +251,7 @@ export const RegisterForm = () => {
                 name="phoneNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">
-                      Phone Number
-                    </FormLabel>
+                    <FormLabel className={authLabel}>Phone number</FormLabel>
                     <FormControl>
                       <RPNInput.default
                         international
@@ -250,7 +261,8 @@ export const RegisterForm = () => {
                         flagComponent={FlagComponent}
                         countrySelectComponent={CountrySelect}
                         inputComponent={PhoneInput}
-                        className="flex"
+                        autoComplete="tel"
+                        className="flex [&_input]:h-11"
                       />
                     </FormControl>
                     <FormMessage />
@@ -258,22 +270,25 @@ export const RegisterForm = () => {
                 )}
               />
             </div>
+          </div>
 
-            {/* District / LGA */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* ── Where you work ── */}
+          <div className="space-y-4">
+            <SectionLabel n={2}>Where you work</SectionLabel>
+            <div
+              className="animate-brand-fade-up grid grid-cols-1 gap-4 sm:grid-cols-2"
+              style={stagger(2)}
+            >
               <FormField
                 control={form.control}
                 name="districtId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">District</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={handleDistrictChange}
-                    >
+                    <FormLabel className={authLabel}>District</FormLabel>
+                    <Select value={field.value} onValueChange={handleDistrictChange}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select District" />
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select district" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -293,23 +308,15 @@ export const RegisterForm = () => {
                 name="lgaId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">
-                      Local Government Area
-                    </FormLabel>
+                    <FormLabel className={authLabel}>Local Government Area</FormLabel>
                     <Select
                       value={field.value}
                       onValueChange={handleLgaChange}
-                      disabled={!form.watch("districtId") || loadingLgas}
+                      disabled={!districtId || loadingLgas}
                     >
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              loadingLgas
-                                ? "Loading..."
-                                : "Select Local Government Area"
-                            }
-                          />
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={loadingLgas ? "Loading..." : "Select LGA"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -324,32 +331,20 @@ export const RegisterForm = () => {
                   </FormItem>
                 )}
               />
-            </div>
-
-            {/* PHC / Role */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="phcId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">
-                      Primary Health Care (PHC)
-                    </FormLabel>
+                    <FormLabel className={authLabel}>Primary Health Care (PHC)</FormLabel>
                     <Select
                       value={field.value}
                       onValueChange={(val) => form.setValue("phcId", val)}
-                      disabled={!form.watch("lgaId") || loadingPhcs}
+                      disabled={!lgaId || loadingPhcs}
                     >
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue
-                            placeholder={
-                              loadingPhcs
-                                ? "Loading..."
-                                : "Select Primary Health Care (PHC)"
-                            }
-                          />
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={loadingPhcs ? "Loading..." : "Select PHC"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -369,11 +364,11 @@ export const RegisterForm = () => {
                 name="roleId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">Role</FormLabel>
+                    <FormLabel className={authLabel}>Role</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select Role" />
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select role" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -389,36 +384,23 @@ export const RegisterForm = () => {
                 )}
               />
             </div>
+          </div>
 
-            {/* Password / Confirm Password */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* ── Password ── */}
+          <div className="space-y-4">
+            <SectionLabel n={3}>Password</SectionLabel>
+            <div
+              className="animate-brand-fade-up grid grid-cols-1 gap-4 sm:grid-cols-2"
+              style={stagger(3)}
+            >
               <FormField
                 control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">Password</FormLabel>
+                    <FormLabel className={authLabel}>Password</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showPassword ? "text" : "password"}
-                          className="pr-10"
-                          placeholder="••••••••"
-                          {...field}
-                        />
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        >
-                          {showPassword ? (
-                            <EyeOff size={16} />
-                          ) : (
-                            <Eye size={16} />
-                          )}
-                        </button>
-                      </div>
+                      <PasswordInput autoComplete="new-password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -429,55 +411,37 @@ export const RegisterForm = () => {
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold">
-                      Confirm Password
-                    </FormLabel>
+                    <FormLabel className={authLabel}>Confirm password</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <Input
-                          type={showConfirmPassword ? "text" : "password"}
-                          className="pr-10"
-                          placeholder="••••••••"
-                          {...field}
-                        />
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onClick={() =>
-                            setShowConfirmPassword(!showConfirmPassword)
-                          }
-                          className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        >
-                          {showConfirmPassword ? (
-                            <EyeOff size={16} />
-                          ) : (
-                            <Eye size={16} />
-                          )}
-                        </button>
-                      </div>
+                      <PasswordInput autoComplete="new-password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+            <p className="font-sans text-xs text-muted-foreground">At least 8 characters.</p>
+          </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={form.formState.isSubmitting}
-            >
-              {form.formState.isSubmitting ? "Registering..." : "Register"}
-            </Button>
+          <SubmitButton
+            pending={form.formState.isSubmitting}
+            pendingLabel="Creating account"
+            style={stagger(4)}
+          >
+            Create account
+          </SubmitButton>
 
-            <div className="text-center">
-              <Link href="/" className="text-sm text-primary hover:underline">
-                Already have an account? Login
-              </Link>
-            </div>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+          <p
+            className="animate-brand-fade-up text-center font-sans text-sm text-muted-foreground"
+            style={stagger(5)}
+          >
+            Already have an account?{" "}
+            <Link href="/" className="font-ui font-semibold text-primary hover:underline">
+              Sign in
+            </Link>
+          </p>
+        </form>
+      </Form>
+    </AuthShell>
   )
 }

@@ -7,11 +7,9 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { ArrowLeft, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from "lucide-react"
+import { ArrowLeft, KeyRound, Mail, ShieldCheck } from "lucide-react"
 
-import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import {
   Form,
   FormControl,
@@ -20,8 +18,29 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import { Logo } from "@/components/Logo"
 import api from "@/lib/api"
+import { apiErrorMessage } from "@/lib/api-error"
+import { AuthShell, authLabel, stagger } from "../_components/AuthShell"
+import { PasswordInput } from "../_components/PasswordInput"
+import { SubmitButton } from "../_components/SubmitButton"
+
+const BRAND = {
+  headline: "Get back into your account.",
+  message:
+    "We'll email you a one-time code so you can choose a new password securely.",
+  note: "Reset codes expire after 10 minutes and work only once.",
+}
+
+function StepMarker({ step }: { step: 1 | 2 | 3 }) {
+  return (
+    <span className="mb-3 block font-ui text-xs font-medium tracking-[0.18em] text-brand-sky-700 uppercase dark:text-brand-sky-300">
+      Step {step} of 3
+    </span>
+  )
+}
+
+const linkButton =
+  "inline-flex items-center gap-1 font-ui text-sm text-muted-foreground transition-colors hover:text-foreground"
 
 // ─── Step 1: Email ─────────────────────────────────────────────────────────
 
@@ -39,62 +58,70 @@ function StepEmail({ onNext }: { onNext: (email: string) => void }) {
   async function onSubmit(values: EmailValues) {
     try {
       await api.post("/auth/forgot-password", { email: values.email })
-      toast.success("OTP sent — check your email inbox.")
+      toast.success("If that email is registered, a code is on its way.")
       onNext(values.email)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(Array.isArray(msg) ? msg.join(", ") : msg || "Something went wrong")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Something went wrong"))
     }
   }
 
   return (
-    <>
-      <div className="mb-6 flex flex-col items-center gap-2 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-          <Mail className="h-6 w-6 text-primary" />
-        </div>
-        <h1 className="text-xl font-semibold">Forgot your password?</h1>
-        <p className="text-sm text-muted-foreground">
-          Enter your email and we&apos;ll send you a one-time code.
-        </p>
-      </div>
-
+    <AuthShell
+      brand={BRAND}
+      icon={<Mail className="h-6 w-6" />}
+      title={
+        <>
+          <StepMarker step={1} />
+          Forgot your password?
+        </>
+      }
+      description="Enter your email and we'll send you a 6-digit code."
+    >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-5">
           <FormField
             control={form.control}
             name="email"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Email address</FormLabel>
+              <FormItem className="animate-brand-fade-up" style={stagger(1)}>
+                <FormLabel className={authLabel}>Email</FormLabel>
                 <FormControl>
-                  <Input placeholder="example@lagosstate.gov.ng" {...field} />
+                  <Input
+                    className="h-11"
+                    placeholder="you@lagosstate.gov.ng"
+                    autoComplete="email"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          <Button type="submit" className="h-12 w-full" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Sending..." : "Send OTP"}
-          </Button>
+          <SubmitButton
+            pending={form.formState.isSubmitting}
+            pendingLabel="Sending code"
+            style={stagger(2)}
+          >
+            Send code
+          </SubmitButton>
 
-          <div className="flex justify-center pt-1">
-            <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <div className="animate-brand-fade-up flex justify-center pt-2" style={stagger(3)}>
+            <Link href="/" className={linkButton}>
               <ArrowLeft size={14} />
-              Back to login
+              Back to sign in
             </Link>
           </div>
         </form>
       </Form>
-    </>
+    </AuthShell>
   )
 }
 
 // ─── Step 2: OTP verification ────────────────────────────────────────────────
 
 const otpSchema = z.object({
-  otp: z.string().length(6, "OTP must be 6 digits").regex(/^\d+$/, "OTP must be numeric"),
+  otp: z.string().length(6, "The code is 6 digits").regex(/^\d+$/, "The code is numbers only"),
 })
 type OtpValues = z.infer<typeof otpSchema>
 
@@ -115,51 +142,54 @@ function StepOtp({
   async function onSubmit(values: OtpValues) {
     try {
       await api.post("/auth/verify-otp", { email, otp: values.otp })
-      toast.success("OTP verified.")
+      toast.success("Code verified.")
       onNext(values.otp)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(Array.isArray(msg) ? msg.join(", ") : msg || "Invalid or expired OTP")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Invalid or expired code"))
     }
   }
 
   async function resend() {
     try {
       await api.post("/auth/forgot-password", { email })
-      toast.success("A new OTP has been sent.")
+      toast.success("A new code has been sent.")
     } catch {
-      toast.error("Could not resend OTP. Try again.")
+      toast.error("Could not resend the code. Try again.")
     }
   }
 
   return (
-    <>
-      <div className="mb-6 flex flex-col items-center gap-2 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-          <ShieldCheck className="h-6 w-6 text-primary" />
-        </div>
-        <h1 className="text-xl font-semibold">Check your email</h1>
-        <p className="text-sm text-muted-foreground">
+    <AuthShell
+      brand={BRAND}
+      icon={<ShieldCheck className="h-6 w-6" />}
+      title={
+        <>
+          <StepMarker step={2} />
+          Check your email
+        </>
+      }
+      description={
+        <>
           We sent a 6-digit code to{" "}
           <span className="font-medium text-foreground">{email}</span>.
-          Enter it below.
-        </p>
-      </div>
-
+        </>
+      }
+    >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-5">
           <FormField
             control={form.control}
             name="otp"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>One-time code</FormLabel>
+              <FormItem className="animate-brand-fade-up" style={stagger(1)}>
+                <FormLabel className={authLabel}>One-time code</FormLabel>
                 <FormControl>
                   <Input
                     placeholder="123456"
                     maxLength={6}
                     inputMode="numeric"
-                    className="tracking-widest text-center text-lg"
+                    autoComplete="one-time-code"
+                    className="h-11 text-center text-lg tracking-[0.5em]"
                     {...field}
                   />
                 </FormControl>
@@ -168,22 +198,33 @@ function StepOtp({
             )}
           />
 
-          <Button type="submit" className="h-12 w-full" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Verifying..." : "Verify code"}
-          </Button>
+          <SubmitButton
+            pending={form.formState.isSubmitting}
+            pendingLabel="Verifying code"
+            style={stagger(2)}
+          >
+            Verify code
+          </SubmitButton>
 
-          <div className="flex items-center justify-between pt-1">
-            <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <div
+            className="animate-brand-fade-up flex items-center justify-between pt-2"
+            style={stagger(3)}
+          >
+            <button type="button" onClick={onBack} className={linkButton}>
               <ArrowLeft size={14} />
               Change email
             </button>
-            <button type="button" onClick={resend} className="text-sm text-primary hover:underline">
+            <button
+              type="button"
+              onClick={resend}
+              className="font-ui text-sm font-semibold text-primary hover:underline"
+            >
               Resend code
             </button>
           </div>
         </form>
       </Form>
-    </>
+    </AuthShell>
   )
 }
 
@@ -210,8 +251,6 @@ function StepNewPassword({
   onBack: () => void
 }) {
   const router = useRouter()
-  const [showNew, setShowNew] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
 
   const form = useForm<PasswordValues>({
     resolver: zodResolver(passwordSchema),
@@ -226,52 +265,44 @@ function StepNewPassword({
         newPassword: values.newPassword,
         confirmPassword: values.confirmPassword,
       })
-      toast.success("Password reset successfully. You can now log in.")
+      toast.success("Password reset. You can now sign in.")
       router.push("/")
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(Array.isArray(msg) ? msg.join(", ") : msg || "Something went wrong")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Something went wrong"))
     }
   }
 
   return (
-    <>
-      <div className="mb-6 flex flex-col items-center gap-2 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-          <KeyRound className="h-6 w-6 text-primary" />
-        </div>
-        <h1 className="text-xl font-semibold">Set a new password</h1>
-        <p className="text-sm text-muted-foreground">
+    <AuthShell
+      brand={BRAND}
+      icon={<KeyRound className="h-6 w-6" />}
+      title={
+        <>
+          <StepMarker step={3} />
+          Set a new password
+        </>
+      }
+      description={
+        <>
           Choose a strong password for{" "}
           <span className="font-medium text-foreground">{email}</span>.
-        </p>
-      </div>
-
+        </>
+      }
+    >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-8 space-y-5">
           <FormField
             control={form.control}
             name="newPassword"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>New password</FormLabel>
+              <FormItem className="animate-brand-fade-up" style={stagger(1)}>
+                <FormLabel className={authLabel}>New password</FormLabel>
                 <FormControl>
-                  <div className="relative">
-                    <Input
-                      type={showNew ? "text" : "password"}
-                      placeholder="At least 6 characters"
-                      className="pr-10"
-                      {...field}
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => setShowNew((v) => !v)}
-                      className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -282,48 +313,41 @@ function StepNewPassword({
             control={form.control}
             name="confirmPassword"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Confirm password</FormLabel>
+              <FormItem className="animate-brand-fade-up" style={stagger(2)}>
+                <FormLabel className={authLabel}>Confirm password</FormLabel>
                 <FormControl>
-                  <div className="relative">
-                    <Input
-                      type={showConfirm ? "text" : "password"}
-                      placeholder="Repeat new password"
-                      className="pr-10"
-                      {...field}
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => setShowConfirm((v) => !v)}
-                      className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    >
-                      {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    placeholder="Repeat new password"
+                    {...field}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          <Button type="submit" className="h-12 w-full" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Resetting..." : "Reset password"}
-          </Button>
+          <SubmitButton
+            pending={form.formState.isSubmitting}
+            pendingLabel="Resetting password"
+            style={stagger(3)}
+          >
+            Reset password
+          </SubmitButton>
 
-          <div className="flex justify-center pt-1">
-            <button type="button" onClick={onBack} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <div className="animate-brand-fade-up flex justify-center pt-2" style={stagger(4)}>
+            <button type="button" onClick={onBack} className={linkButton}>
               <ArrowLeft size={14} />
               Back
             </button>
           </div>
         </form>
       </Form>
-    </>
+    </AuthShell>
   )
 }
 
-// ─── Page shell ─────────────────────────────────────────────────────────────
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 type Step = "email" | "otp" | "password"
 
@@ -332,42 +356,30 @@ function ForgotPasswordFlow() {
   const [email, setEmail] = useState("")
   const [otp, setOtp] = useState("")
 
+  if (step === "otp") {
+    return (
+      <StepOtp
+        email={email}
+        onNext={(o) => {
+          setOtp(o)
+          setStep("password")
+        }}
+        onBack={() => setStep("email")}
+      />
+    )
+  }
+
+  if (step === "password") {
+    return <StepNewPassword email={email} otp={otp} onBack={() => setStep("otp")} />
+  }
+
   return (
-    <Card className="w-full max-w-md shadow-lg">
-      <CardContent>
-        <div className="mb-8 flex justify-center">
-          <Logo />
-        </div>
-
-        {step === "email" && (
-          <StepEmail
-            onNext={(e) => {
-              setEmail(e)
-              setStep("otp")
-            }}
-          />
-        )}
-
-        {step === "otp" && (
-          <StepOtp
-            email={email}
-            onNext={(o) => {
-              setOtp(o)
-              setStep("password")
-            }}
-            onBack={() => setStep("email")}
-          />
-        )}
-
-        {step === "password" && (
-          <StepNewPassword
-            email={email}
-            otp={otp}
-            onBack={() => setStep("otp")}
-          />
-        )}
-      </CardContent>
-    </Card>
+    <StepEmail
+      onNext={(e) => {
+        setEmail(e)
+        setStep("otp")
+      }}
+    />
   )
 }
 
