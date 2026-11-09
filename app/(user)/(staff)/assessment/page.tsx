@@ -21,8 +21,12 @@ type Submission = {
   id: string
   answeredCount: number
   updatedAt: string
-  editDeadline?: string
-  daysLeft?: number
+  /** A draft auto-saves; it only counts once someone submits it. */
+  status: "IN_PROGRESS" | "SUBMITTED"
+  submittedAt: string | null
+  /** Null for a draft. */
+  editDeadline: string | null
+  daysLeft: number | null
   answers?: any[]
 }
 
@@ -40,7 +44,7 @@ type MyPeriod = {
   questions?: any[]
   mySubmission: Submission | null
   /** Directors: progress across the PHCs in their district. */
-  coverage?: { total: number; started: number; complete: number }
+  coverage?: { total: number; started: number; submitted: number }
 }
 
 type MyPeriods = {
@@ -77,9 +81,9 @@ function OpenCard({ p }: { p: MyPeriod }) {
   const cov = p.coverage
   // Directors track PHCs across their district; everyone else, questions.
   const total = cov ? cov.total : p.totalQuestions
-  const answered = cov ? cov.complete : (sub?.answeredCount ?? 0)
+  const answered = cov ? cov.submitted : (sub?.answeredCount ?? 0)
   const pct = total > 0 ? Math.round((answered / total) * 100) : 0
-  const isComplete = answered === total && total > 0
+  const isComplete = cov ? total > 0 && cov.submitted >= total : sub?.status === "SUBMITTED"
   const notStarted = cov ? cov.started === 0 : !sub
   const isSafeCare = p.type === "SAFECARE"
 
@@ -91,11 +95,11 @@ function OpenCard({ p }: { p: MyPeriod }) {
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
             {isComplete ? (
-              <StatusBadge status="COMPLETED" label={cov ? "All PHCs done" : "Submitted"} />
+              <StatusBadge status="COMPLETED" label={cov ? "All PHCs submitted" : "Submitted"} />
             ) : notStarted ? (
               <StatusBadge status="NEW" label="Not started" tone="neutral" />
             ) : (
-              <StatusBadge status="IN_PROGRESS" />
+              <StatusBadge status="IN_PROGRESS" label={cov ? "In progress" : "Draft, not submitted"} />
             )}
           </div>
           {p.description && (
@@ -107,14 +111,14 @@ function OpenCard({ p }: { p: MyPeriod }) {
               Closes {format(new Date(p.endDate), "dd MMM yyyy, HH:mm")}
             </span>
             {isSafeCare && <span>Every 2 years</span>}
-            {sub?.daysLeft !== undefined && (
+            {typeof sub?.daysLeft === "number" && (
               <EditWindowBadge daysLeft={sub.daysLeft} />
             )}
           </div>
         </div>
         <Button asChild size="sm" disabled={!cov && sub?.daysLeft === 0}>
           <Link href={`/assessment/${p.id}`}>
-            {cov ? "Choose PHC" : isComplete ? "Review / Edit" : !sub ? "Start" : "Continue"}
+            {cov ? "Choose PHC" : isComplete ? "Review / edit" : !sub ? "Start" : "Continue"}
             <ChevronRight className="ml-1 h-4 w-4" />
           </Link>
         </Button>
@@ -124,7 +128,7 @@ function OpenCard({ p }: { p: MyPeriod }) {
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>
             {cov
-              ? `${cov.complete} of ${cov.total} PHCs complete · ${cov.started} started`
+              ? `${cov.submitted} of ${cov.total} PHCs submitted · ${cov.started - cov.submitted} in progress`
               : `${answered} of ${total} questions answered`}
           </span>
           <span>{pct}%</span>
@@ -177,7 +181,11 @@ function ClosedCard({ p }: { p: MyPeriod }) {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">{p.title}</h3>
             {isSafeCare && <SafeCareBadge />}
-            <StatusBadge status="COMPLETED" label="Submitted" />
+            {cov ? null : sub?.status === "SUBMITTED" ? (
+              <StatusBadge status="COMPLETED" label="Submitted" />
+            ) : (
+              <StatusBadge status="MISSED" label="Not submitted" />
+            )}
           </div>
           {p.description && (
             <p className="text-sm text-muted-foreground">{p.description}</p>
@@ -185,13 +193,17 @@ function ClosedCard({ p }: { p: MyPeriod }) {
           <p className="text-xs text-muted-foreground">
             {cov ? (
               <>
-                Closed {format(new Date(p.endDate), "dd MMM yyyy")} &bull; {cov.started} of {cov.total} PHCs
-                assessed
+                Closed {format(new Date(p.endDate), "dd MMM yyyy")} &bull; {cov.submitted} of {cov.total} PHCs
+                submitted
+              </>
+            ) : sub?.submittedAt ? (
+              <>
+                Submitted {format(new Date(sub.submittedAt), "dd MMM yyyy, HH:mm")} &bull;{" "}
+                {answered} of {total} answered
               </>
             ) : sub ? (
               <>
-                Submitted {format(new Date(sub.updatedAt), "dd MMM yyyy, HH:mm")} &bull;{" "}
-                {answered} of {total} answered
+                Started but never submitted &bull; {answered} of {total} answered
               </>
             ) : null}
           </p>

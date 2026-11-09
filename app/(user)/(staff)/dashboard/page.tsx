@@ -38,24 +38,32 @@ type MyPeriod = {
     id: string
     answeredCount: number
     updatedAt: string
+    status: "IN_PROGRESS" | "SUBMITTED"
   } | null
   /** Directors: progress across the PHCs in their district. */
-  coverage?: { total: number; started: number; complete: number }
+  coverage?: { total: number; started: number; submitted: number }
 }
 
 /**
- * How far a period has got: questions answered for most staff, PHCs completed
+ * How far a period has got: questions answered for most staff, PHCs submitted
  * across the district for directors.
  */
 function progressOf(p: MyPeriod) {
   if (p.coverage) {
-    const { total, started, complete } = p.coverage
-    return { done: complete, total, started: started > 0, unit: "PHCs complete" }
+    const { total, started, submitted } = p.coverage
+    return {
+      done: submitted,
+      total,
+      started: started > 0,
+      complete: total > 0 && submitted >= total,
+      unit: "PHCs submitted",
+    }
   }
   return {
     done: p.mySubmission?.answeredCount ?? 0,
     total: p.totalQuestions ?? 0,
     started: !!p.mySubmission,
+    complete: p.mySubmission?.status === "SUBMITTED",
     unit: "questions answered",
   }
 }
@@ -199,7 +207,7 @@ export default function StaffDashboardPage() {
               const answered = prog.done
               const pct =
                 total > 0 ? Math.min(100, Math.round((answered / total) * 100)) : 0
-              const isComplete = total > 0 && answered >= total
+              const isComplete = prog.complete
               const isExpiringSoon =
                 !isPast(new Date(p.endDate)) &&
                 new Date(p.endDate).getTime() - Date.now() < 24 * 60 * 60 * 1000
@@ -259,9 +267,9 @@ export default function StaffDashboardPage() {
                         {p.coverage
                           ? "Choose PHC"
                           : isComplete
-                            ? "Review Submission"
+                            ? "Review submission"
                             : !prog.started
-                              ? "Start Assessment"
+                              ? "Start assessment"
                               : "Continue"}
                         <ChevronRight className="ml-1 h-4 w-4" />
                       </Link>

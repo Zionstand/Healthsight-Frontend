@@ -41,8 +41,10 @@ import {
   ListPagination,
   ListToolbar,
   SearchInput,
+  SegmentedFilter,
   TableState,
 } from "@/components/list/ListKit"
+import { StatusBadge } from "@/components/StatusBadge"
 import { useListParams, useSearchParam } from "@/hooks/use-list-params"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 
@@ -94,6 +96,10 @@ type SubmissionSummary = {
   } | null
   /** Who created the submission; `user` is whoever saved it last. */
   startedBy?: { id: string; firstName: string; lastName: string } | null
+  /** Drafts auto-save and aren't counted until someone submits them. */
+  status: "IN_PROGRESS" | "SUBMITTED"
+  submittedAt: string | null
+  submittedBy?: { id: string; firstName: string; lastName: string } | null
 }
 
 type Results = {
@@ -111,6 +117,8 @@ type Results = {
   stats: {
     totalEligible: number
     totalSubmitted: number
+    /** Drafts: started, not yet submitted. Not in any figure. */
+    inProgress: number
     completionRate: number
     complianceScore: number | null
     categoryCompliance: { name: string; score: number }[] | null
@@ -155,6 +163,7 @@ export default function PeriodResultsPage() {
   const [params, setParams] = useListParams({
     tab: "submissions",
     q: "",
+    status: "all",
     page: 1,
   })
   const [search, setSearch] = useSearchParam(params.q, (q) => setParams({ q }))
@@ -208,6 +217,11 @@ export default function PeriodResultsPage() {
 
   const term = params.q.trim().toLowerCase()
   const shownSubs = submissions
+    .filter(
+      (s) =>
+        params.status === "all" ||
+        (params.status === "submitted" ? s.status === "SUBMITTED" : s.status !== "SUBMITTED")
+    )
     .filter(
       (s) =>
         !term ||
@@ -277,6 +291,11 @@ export default function PeriodResultsPage() {
           </div>
           <p className="text-2xl font-bold">{stats.completionRate}%</p>
           <Progress value={stats.completionRate} className="h-2" />
+          {stats.inProgress > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {stats.inProgress} more in progress, not yet submitted
+            </p>
+          )}
         </div>
         {period.type === "SAFECARE" && stats.complianceScore !== null && (
           <div
@@ -350,11 +369,21 @@ export default function PeriodResultsPage() {
 
         {/* ── SUBMISSIONS ──────────────────────────────────────────────────── */}
         <TabsContent value="submissions" className="space-y-4 pt-4">
-          <ListToolbar>
+          <ListToolbar className="sm:justify-between">
             <SearchInput
               value={search}
               onChange={setSearch}
               placeholder="Search by PHC, LGA or staff name"
+            />
+            <SegmentedFilter
+              label="Status"
+              value={params.status}
+              onChange={(v) => setParams({ status: v, page: 1 })}
+              options={[
+                { value: "all", label: "All", count: submissions.length },
+                { value: "submitted", label: "Submitted", count: stats.totalSubmitted },
+                { value: "in-progress", label: "In progress", count: stats.inProgress },
+              ]}
             />
           </ListToolbar>
           <div className="rounded-xl border bg-card">
@@ -365,7 +394,7 @@ export default function PeriodResultsPage() {
                   <TableHead className="hidden md:table-cell">
                     Recorded by
                   </TableHead>
-                  <TableHead>Progress</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="hidden sm:table-cell">
                     Last updated
                   </TableHead>
@@ -385,7 +414,7 @@ export default function PeriodResultsPage() {
                   description={
                     term
                       ? "Try a different PHC, LGA or name."
-                      : "Submissions appear here as soon as staff start filling in this assessment."
+                      : "PHCs appear here as soon as staff start filling in this assessment."
                   }
                   action={
                     term ? (
@@ -448,7 +477,12 @@ export default function PeriodResultsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="w-24 space-y-1 sm:w-32">
+                        <div className="w-28 space-y-1.5 sm:w-36">
+                          {s.status === "SUBMITTED" ? (
+                            <StatusBadge status="COMPLETED" label="Submitted" />
+                          ) : (
+                            <StatusBadge status="IN_PROGRESS" label="In progress" />
+                          )}
                           <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
                             <span>
                               {s.answeredCount}/{s.totalQuestions}
@@ -460,6 +494,11 @@ export default function PeriodResultsPage() {
                       </TableCell>
                       <TableCell className="hidden text-sm whitespace-nowrap text-muted-foreground sm:table-cell">
                         {format(new Date(s.updatedAt), "dd MMM yyyy, HH:mm")}
+                        {s.submittedAt && (
+                          <p className="text-xs">
+                            Submitted {format(new Date(s.submittedAt), "dd MMM yyyy")}
+                          </p>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -479,6 +518,13 @@ export default function PeriodResultsPage() {
 
         {/* ── PER-QUESTION BREAKDOWN ──────────────────────────────────────── */}
         <TabsContent value="questions" className="space-y-6 pt-4">
+          <p className="text-sm text-muted-foreground">
+            Figures come from the {stats.totalSubmitted.toLocaleString()} submitted assessment
+            {stats.totalSubmitted === 1 ? "" : "s"}
+            {stats.inProgress > 0
+              ? `. ${stats.inProgress} still in progress ${stats.inProgress === 1 ? "is" : "are"} not included.`
+              : "."}
+          </p>
           {Object.entries(byCategory).map(([catId, qs]) => (
             <div key={catId} className="space-y-4">
               <h3 className="inline-block rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">
@@ -600,6 +646,15 @@ export default function PeriodResultsPage() {
                   ? `recorded by ${selectedUser.user.firstName} ${selectedUser.user.lastName}`
                   : "staff account removed"}
             </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {selectedUser?.submittedAt
+                ? `Submitted ${format(new Date(selectedUser.submittedAt), "dd MMM yyyy, HH:mm")}${
+                    selectedUser.submittedBy
+                      ? ` by ${selectedUser.submittedBy.firstName} ${selectedUser.submittedBy.lastName}`
+                      : ""
+                  }`
+                : "In progress: not submitted yet, so not counted in the results."}
+            </p>
           </DialogHeader>
           {detailLoading && (
             <div className="space-y-3">

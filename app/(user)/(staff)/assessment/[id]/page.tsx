@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { format, isPast } from "date-fns"
-import { CheckCircle2, Clock, History, Loader2, MapPin, Save } from "lucide-react"
+import { CheckCircle2, CircleAlert, Clock, History, Loader2, MapPin, Send } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -15,6 +15,14 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -63,9 +71,15 @@ type Period = {
     answeredCount: number
     createdAt: string
     updatedAt: string
-    daysLeft: number
+    /** A draft auto-saves; it only counts once someone submits it. */
+    status: "IN_PROGRESS" | "SUBMITTED"
+    submittedAt: string | null
+    /** Null for a draft: it stays editable while the period is open. */
+    editDeadline: string | null
+    daysLeft: number | null
     lastSavedBy: { id: string; firstName: string; lastName: string } | null
     startedBy: { id: string; firstName: string; lastName: string } | null
+    submittedBy: { id: string; firstName: string; lastName: string } | null
     answers: { questionId: string; selectedOptions: string[] }[]
   } | null
 }
@@ -104,6 +118,8 @@ export default function AssessmentFormPage() {
   const answersRef = useRef<AnswersMap>({})
   const [pickerOpen, setPickerOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
+  const [submitOpen, setSubmitOpen] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   useDocumentTitle(period?.title)
 
   // One draft per period per facility.
@@ -347,9 +363,35 @@ export default function AssessmentFormPage() {
     router.replace(`/assessment/${id}?phc=${phcId}`)
   }
 
-  function handleSave() {
+  /** Saves anything pending, then marks the assessment as submitted. */
+  async function handleSubmit() {
+    if (!period) return
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    doSave()
+    setSubmitting(true)
+    try {
+      if (dirtyRef.current.size > 0 && !(await doSave())) return
+      const params = period.facility ? { phcId: period.facility.id } : undefined
+      await api.post(`/assessment/periods/${id}/my-submission/submit`, params ?? {})
+      // Reload the submission so the banner shows who submitted and when.
+      const fresh = await api
+        .get(`/assessment/periods/${id}/my`, { params })
+        .then((r) => r.data as Period)
+      setPeriod((p) => (p ? { ...p, mySubmission: fresh.mySubmission } : fresh))
+      setSubmitOpen(false)
+      toast.success("Assessment submitted", {
+        description: "You can still change answers for 7 days.",
+      })
+      void invalidate(
+        "/assessment/my",
+        `/assessment/periods/${id}/results`,
+        `/assessment/periods/${id}/facilities`,
+        "/admin/stats"
+      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Couldn't submit the assessment"))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   // Loading, or on the way back to the list after an error.
@@ -393,10 +435,24 @@ export default function AssessmentFormPage() {
   const total = period.questions.length
   const answered = totalAnswered()
   const pct = total > 0 ? Math.round((answered / total) * 100) : 0
-  const periodClosed = isPast(new Date(period.endDate))
-  const editingClosed = !periodClosed && period.mySubmission?.daysLeft === 0
-  const closed = periodClosed || editingClosed
   const sub = period.mySubmission
+  const submitted = sub?.status === "SUBMITTED"
+  const periodClosed = isPast(new Date(period.endDate))
+  const editingClosed = !periodClosed && submitted && sub?.daysLeft === 0
+  const closed = periodClosed || editingClosed
+  const gaps = categories
+    .map((cat) => ({
+      cat,
+      missing: getQuestionsInCategory(cat.id).length - answeredInCategory(cat.id),
+    }))
+    .filter((g) => g.missing > 0)
+  const savedLabel = submitted ? "Changes saved" : "Draft saved"
+  const submitButton = (
+    <Button onClick={() => setSubmitOpen(true)} disabled={answered === 0 || submitting}>
+      <Send className="mr-2 h-4 w-4" />
+      Submit assessment
+    </Button>
+  )
   // Someone other than this user has worked on it.
   const byOther =
     (!!sub?.lastSavedBy && sub.lastSavedBy.id !== me?.id) ||
@@ -436,23 +492,14 @@ export default function AssessmentFormPage() {
             {saveStatus === "saved" && (
               <span className="flex items-center gap-1.5 text-xs text-brand-verdant-600">
                 <CheckCircle2 className="h-3 w-3" />
-                All saved
+                {savedLabel}
               </span>
             )}
             {saveStatus === "error" && (
               <span className="text-xs text-destructive">Save failed</span>
             )}
 
-            {!closed && (
-              <Button
-                onClick={handleSave}
-                disabled={saveStatus === "saving"}
-                variant={saveStatus === "saved" ? "outline" : "default"}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {saveStatus === "saving" ? "Saving…" : "Save"}
-              </Button>
-            )}
+            {!closed && !submitted && submitButton}
           </div>
         }
       />
@@ -490,11 +537,42 @@ export default function AssessmentFormPage() {
         </div>
       )}
 
+      {submitted && sub?.submittedAt && (
+        <div className="flex gap-3 rounded-lg border border-brand-verdant-300 bg-brand-verdant-50 p-3 text-sm text-brand-verdant-900 dark:border-brand-verdant-800 dark:bg-brand-verdant-900/20 dark:text-brand-verdant-200">
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+          <p>
+            <span className="font-medium">
+              Submitted {format(new Date(sub.submittedAt), "dd MMM yyyy, HH:mm")}
+              {sub.submittedBy &&
+                ` by ${sub.submittedBy.id === me?.id ? "you" : `${sub.submittedBy.firstName} ${sub.submittedBy.lastName}`}`}
+              .
+            </span>{" "}
+            {!closed && sub.editDeadline &&
+              `You can change answers until ${format(new Date(sub.editDeadline), "dd MMM yyyy, HH:mm")}. Changes save automatically.`}
+          </p>
+        </div>
+      )}
+
+      {!submitted && !closed && (
+        <div className="flex gap-3 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+          <CircleAlert className="mt-0.5 size-4 shrink-0" />
+          <p>
+            <span className="font-medium text-foreground">Draft.</span> Your answers save
+            automatically. When you&apos;ve finished, press <strong className="text-foreground">Submit assessment</strong>.
+            Until then it doesn&apos;t count as submitted.
+          </p>
+        </div>
+      )}
+
       {closed && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
           {editingClosed
             ? "The 7-day editing window for this assessment has closed. It is now read-only."
-            : "This assessment period has closed. The assessment is now read-only."}
+            : submitted
+              ? "This assessment period has closed. The assessment is now read-only."
+              : sub
+                ? "This assessment period has closed. This assessment was never submitted, so it isn't counted in the results."
+                : "This assessment period has closed."}
         </div>
       )}
 
@@ -661,40 +739,78 @@ export default function AssessmentFormPage() {
             )
           })}
 
-          {/* Bottom save button */}
+          {/* Bottom: save status and Submit */}
           {!closed && (
-            <div className="flex items-center justify-end gap-3 pb-4">
-              {saveStatus === "saved" && (
-                <span className="flex items-center gap-1.5 text-xs text-brand-verdant-600">
-                  <CheckCircle2 className="h-3 w-3" />
-                  All saved
-                </span>
-              )}
-              {saveStatus === "pending" && (
-                <span className="text-xs text-muted-foreground">
-                  Unsaved changes
-                </span>
-              )}
-              <Button
-                size="lg"
-                onClick={handleSave}
-                disabled={saveStatus === "saving"}
-                variant={saveStatus === "saved" ? "outline" : "default"}
-                className="shadow-md"
-              >
-                {saveStatus === "saving" ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-4 w-4" />
-                )}
+            <div className="flex flex-col items-stretch gap-3 border-t pt-6 pb-4 sm:flex-row sm:items-center sm:justify-end">
+              <span className="text-center text-xs text-muted-foreground sm:text-right">
                 {saveStatus === "saving"
                   ? "Saving…"
-                  : `Save (${answered}/${total} answered)`}
-              </Button>
+                  : saveStatus === "pending"
+                    ? "Unsaved changes"
+                    : saveStatus === "error"
+                      ? "Save failed. Your answers are kept on this device."
+                      : submitted
+                        ? "Submitted. Changes save automatically."
+                        : `${answered}/${total} answered · ${savedLabel.toLowerCase()} automatically`}
+              </span>
+              {!submitted && submitButton}
             </div>
           )}
         </div>
       </div>
+
+      <Dialog open={submitOpen} onOpenChange={(o) => !submitting && setSubmitOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Submit assessment?</DialogTitle>
+            <DialogDescription>
+              {period.facility ? `${period.facility.name} · ` : ""}
+              {answered} of {total} questions answered.
+            </DialogDescription>
+          </DialogHeader>
+          {gaps.length === 0 ? (
+            <p className="flex items-center gap-2 rounded-lg bg-brand-verdant-50 p-3 text-sm text-brand-verdant-900 dark:bg-brand-verdant-900/20 dark:text-brand-verdant-200">
+              <CheckCircle2 className="size-4 shrink-0" />
+              Every question is answered.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm">
+                {total - answered} question{total - answered === 1 ? " is" : "s are"} still unanswered:
+              </p>
+              <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border text-sm">
+                {gaps.map(({ cat, missing }) => (
+                  <li key={cat.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted"
+                      onClick={() => {
+                        setSubmitOpen(false)
+                        scrollToCategory(cat.id)
+                      }}
+                    >
+                      <span className="truncate">{cat.name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{missing} left</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">
+            After submitting you can still change answers for 7 days.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubmitOpen(false)} disabled={submitting}>
+              {gaps.length > 0 ? "Keep answering" : "Cancel"}
+            </Button>
+            <Button onClick={handleSubmit} disabled={submitting}>
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {gaps.length > 0 ? "Submit anyway" : "Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {picker}
     </div>
   )

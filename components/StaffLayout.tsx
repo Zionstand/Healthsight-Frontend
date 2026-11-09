@@ -15,8 +15,8 @@ import { useNavItems } from "@/lib/nav"
 type MyPeriods = {
   open?: {
     totalQuestions?: number
-    mySubmission?: { answeredCount: number } | null
-    coverage?: { total: number; complete: number }
+    mySubmission?: { status: "IN_PROGRESS" | "SUBMITTED" } | null
+    coverage?: { total: number; submitted: number }
   }[]
 }
 
@@ -25,9 +25,7 @@ function useAssessmentsDue(enabled: boolean) {
   const { data } = useApiQuery<MyPeriods>(enabled ? "/assessment/my" : null, { silent: true })
   return (data?.open ?? []).filter(
     (p) =>
-      p.coverage
-        ? p.coverage.complete < p.coverage.total
-        : !p.mySubmission || p.mySubmission.answeredCount < (p.totalQuestions ?? Infinity)
+      p.coverage ? p.coverage.submitted < p.coverage.total : p.mySubmission?.status !== "SUBMITTED"
   ).length
 }
 

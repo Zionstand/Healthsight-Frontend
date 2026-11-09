@@ -31,7 +31,11 @@ export type FacilitySubmission = {
   updatedAt: string
   lastSavedBy: { firstName: string; lastName: string } | null
   startedBy: { firstName: string; lastName: string } | null
-  daysLeft: number
+  submittedBy: { firstName: string; lastName: string } | null
+  status: "IN_PROGRESS" | "SUBMITTED"
+  submittedAt: string | null
+  /** Null while it is a draft. */
+  daysLeft: number | null
 }
 
 type Facilities = {
@@ -46,10 +50,10 @@ type Facilities = {
 
 function phcStatus(s: FacilitySubmission | null, total: number) {
   if (!s) return { label: "Not started", className: "text-muted-foreground" }
-  if (total > 0 && s.answeredCount >= total)
-    return { label: "Complete", className: "text-brand-verdant-600 dark:text-brand-verdant-400" }
+  if (s.status === "SUBMITTED")
+    return { label: "Submitted", className: "text-brand-verdant-600 dark:text-brand-verdant-400" }
   return {
-    label: `Started · ${s.answeredCount}/${total}`,
+    label: `In progress · ${s.answeredCount}/${total}`,
     className: "text-brand-amber-600 dark:text-brand-amber-400",
   }
 }
@@ -98,9 +102,12 @@ export function FacilityPicker({
   const phc = lga?.phcs.find((p) => p.id === phcId)
 
   const lgaSummary = useMemo(() => {
-    const out: Record<string, { started: number; count: number }> = {}
+    const out: Record<string, { submitted: number; count: number }> = {}
     for (const l of data?.lgas ?? []) {
-      out[l.id] = { started: l.phcs.filter((p) => p.submission).length, count: l.phcs.length }
+      out[l.id] = {
+        submitted: l.phcs.filter((p) => p.submission?.status === "SUBMITTED").length,
+        count: l.phcs.length,
+      }
     }
     return out
   }, [data])
@@ -166,7 +173,7 @@ export function FacilityPicker({
                     <SelectItem key={l.id} value={l.id}>
                       <span>{l.name}</span>
                       <span className="ml-auto pl-3 text-xs text-muted-foreground">
-                        {lgaSummary[l.id]?.started}/{lgaSummary[l.id]?.count} started
+                        {lgaSummary[l.id]?.submitted}/{lgaSummary[l.id]?.count} submitted
                       </span>
                     </SelectItem>
                   ))}
@@ -210,13 +217,17 @@ export function FacilityPicker({
             {s ? (
               <div className="space-y-1">
                 <p className="font-medium">
-                  {phc.name} already has an assessment for this period.
+                  {s.status === "SUBMITTED"
+                    ? `${phc.name}'s assessment for this period has been submitted.`
+                    : `${phc.name}'s assessment for this period is in progress.`}
                 </p>
                 <p>{whoDidWhat(s)} {s.answeredCount} of {total} questions answered.</p>
                 <p>
                   {editingClosed
                     ? "Its 7-day editing window has closed, so you can review it but not change it."
-                    : "You'll continue the same assessment: the answers already given are kept, and nothing is submitted twice."}
+                    : s.status === "SUBMITTED"
+                      ? "You can still correct answers during its 7-day editing window."
+                      : "You'll continue the same draft: the answers already given are kept, and nothing is submitted twice."}
                 </p>
               </div>
             ) : (
