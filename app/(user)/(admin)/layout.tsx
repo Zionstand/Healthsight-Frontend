@@ -2,15 +2,13 @@
 
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { useAuth } from "@/store/useAuth"
+import { useSessionUser, isAdmin } from "@/hooks/use-session-user"
+import { ShellSkeleton } from "@/components/shell/ShellSkeleton"
 import { AdminSidebar } from "@/features/admin/components/AdminSidebar"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
-import { ThemeSwitcher } from "@/components/ThemeSwitcher"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { AppTopBar } from "@/components/shell/AppTopBar"
+import { CommandPaletteProvider } from "@/components/shell/CommandPalette"
+import { useApiQuery } from "@/lib/queries"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 
 // One place to title every admin route (the admin layout is a client component,
@@ -18,7 +16,7 @@ import { useDocumentTitle } from "@/hooks/use-document-title"
 const ADMIN_TITLES: Record<string, string> = {
   "/admin/dashboard": "Admin Dashboard",
   "/admin/analytics": "Assessment Analysis",
-  "/admin/users": "User Management",
+  "/admin/users": "Staff",
   "/admin/pending-users": "Pending Approvals",
   "/admin/phcs": "PHCs",
   "/admin/phcs/map": "PHC Map",
@@ -41,45 +39,39 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, _hasHydrated } = useAuth()
+  const { user, ready, verified } = useSessionUser()
   const router = useRouter()
   const pathname = usePathname()
 
   useDocumentTitle(resolveAdminTitle(pathname))
 
-  useEffect(() => {
-    if (!_hasHydrated) return
-    if (!user) {
-      router.replace("/")
-      return
-    }
-    if (!user.roles?.some((r) => r.name === "ADMIN")) {
-      router.replace("/")
-    }
-  }, [user, _hasHydrated, router])
+  const notAdmin = ready && !isAdmin(user)
 
-  // Don't render until hydrated — prevents flash of content
-  if (!_hasHydrated || !user || !user.roles?.some((r) => r.name === "ADMIN"))
-    return null
+  // Staff accounts belong in the staff app.
+  useEffect(() => {
+    if (notAdmin && verified) router.replace("/dashboard")
+  }, [notAdmin, verified, router])
+
+  // Pending sign-ups, for the menu badge (shares the dashboard's cached stats).
+  const { data: stats } = useApiQuery<{ users: { pending: number } }>(
+    ready && !notAdmin ? "/admin/stats" : null,
+    { silent: true }
+  )
+  const pendingCount = stats?.users.pending ?? 0
+
+  if (!ready || notAdmin) return <ShellSkeleton />
 
   return (
-    <SidebarProvider>
-      <AdminSidebar />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="h-4" />
-          <span className="text-xs font-medium text-muted-foreground">
-            Admin Portal
-          </span>
-          <div className="ml-auto">
-            <ThemeSwitcher />
-          </div>
-        </header>
-        <div className="@container/main container flex flex-1 flex-col gap-4 py-8">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <CommandPaletteProvider>
+      <SidebarProvider>
+        <AdminSidebar pendingCount={pendingCount} />
+        <SidebarInset>
+          <AppTopBar />
+          <main className="@container/main container flex flex-1 flex-col gap-4 py-6 md:py-8">
+            {children}
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
+    </CommandPaletteProvider>
   )
 }

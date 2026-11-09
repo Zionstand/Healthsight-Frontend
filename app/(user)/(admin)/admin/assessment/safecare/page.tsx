@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -75,6 +75,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import api from "@/lib/api"
+import { useApiQuery, useInvalidate } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
+import { StatusBadge } from "@/components/StatusBadge"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -112,11 +115,6 @@ type Question = {
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
-  ACTIVE: "bg-brand-verdant-100 text-brand-verdant-700 dark:bg-brand-verdant-900 dark:text-brand-verdant-300",
-  CLOSED: "bg-brand-crimson-100 text-brand-crimson-700 dark:bg-brand-crimson-900 dark:text-brand-crimson-300",
-}
 
 const QUARTERS: Quarter[] = ["Q1", "Q2", "Q3", "Q4"]
 const CURRENT_YEAR = new Date().getFullYear()
@@ -138,10 +136,21 @@ type PeriodFormValues = z.infer<typeof periodSchema>
 
 export default function SafecareAdminPage() {
   const router = useRouter()
-  const [periods, setPeriods] = useState<Period[]>([])
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
+  const SAFECARE = { type: "SAFECARE" }
+  const invalidate = useInvalidate()
+  const periodsQ = useApiQuery<Period[]>("/assessment/periods", {
+    params: SAFECARE,
+    errorMessage: "Failed to load SafeCare data",
+  })
+  const questionsQ = useApiQuery<Question[]>("/assessment/questions", { params: SAFECARE })
+  const categoriesQ = useApiQuery<Category[]>("/assessment/categories", { params: SAFECARE })
+  const periods = periodsQ.data ?? []
+  const questions = questionsQ.data ?? []
+  const categories = useMemo(
+    () => [...(categoriesQ.data ?? [])].sort((a, b) => a.order - b.order),
+    [categoriesQ.data]
+  )
+  const loading = periodsQ.isPending || questionsQ.isPending || categoriesQ.isPending
   const [pSheet, setPSheet] = useState<{ open: boolean; data?: Period }>({
     open: false,
   })
@@ -151,37 +160,16 @@ export default function SafecareAdminPage() {
   } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  async function fetchAll() {
-    setLoading(true)
-    try {
-      const [periodsRes, questionsRes, categoriesRes] = await Promise.all([
-        api.get("/assessment/periods?type=SAFECARE"),
-        api.get("/assessment/questions?type=SAFECARE"),
-        api.get("/assessment/categories?type=SAFECARE"),
-      ])
-      setPeriods(periodsRes.data)
-      setQuestions(questionsRes.data)
-      setCategories(
-        categoriesRes.data.sort((a: Category, b: Category) => a.order - b.order)
-      )
-    } catch {
-      toast.error("Failed to load SafeCare data")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchAll()
-  }, [])
+  const fetchAll = () =>
+    invalidate("/assessment/periods", "/assessment/questions", "/assessment/categories")
 
   async function updateStatus(id: string, status: string) {
     try {
       await api.patch(`/assessment/periods/${id}`, { status })
       toast.success("Status updated")
       fetchAll()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update status")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to update status"))
     }
   }
 
@@ -193,8 +181,8 @@ export default function SafecareAdminPage() {
       toast.success("Period deleted")
       setDeleteTarget(null)
       fetchAll()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Delete failed")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Delete failed"))
     } finally {
       setDeleting(false)
     }
@@ -243,10 +231,10 @@ export default function SafecareAdminPage() {
           bg="bg-brand-verdant-50 dark:bg-brand-verdant-900/40"
         />
         <SummaryCard
-          icon={<Clock className="h-5 w-5 text-gray-500" />}
+          icon={<Clock className="h-5 w-5 text-muted-foreground" />}
           label="Draft Periods"
           value={draft.length}
-          bg="bg-gray-50 dark:bg-gray-900/40"
+          bg="bg-muted/50"
         />
         <SummaryCard
           icon={<BarChart3 className="h-5 w-5 text-brand-sky-600" />}
@@ -314,11 +302,7 @@ export default function SafecareAdminPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[p.status]}`}
-                    >
-                      {p.status}
-                    </span>
+                    <StatusBadge status={p.status} />
                   </TableCell>
                   <TableCell className="text-sm">
                     {format(new Date(p.startDate), "dd MMM yyyy")}
@@ -560,11 +544,8 @@ function PeriodSheet({
       }
       onClose()
       onSaved()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Failed to save period"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to save period"))
     }
   }
 

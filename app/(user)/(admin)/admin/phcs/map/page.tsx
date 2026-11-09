@@ -1,16 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
-import { toast } from "sonner"
 import { List, MapPin } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import api from "@/lib/api"
+import { useApiQuery } from "@/lib/queries"
 
 const PhcMap = dynamic(() => import("./_components/PhcMap"), {
   ssr: false,
@@ -27,17 +26,10 @@ type Phc = {
 }
 
 export default function PhcMapPage() {
-  const [phcs, setPhcs] = useState<Phc[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: phcs = [], isPending: loading } = useApiQuery<Phc[]>("/locations/phcs", {
+    errorMessage: "Failed to load PHCs",
+  })
   const [selected, setSelected] = useState<Phc | null>(null)
-
-  useEffect(() => {
-    api
-      .get("/locations/phcs")
-      .then((r) => setPhcs(r.data))
-      .catch(() => toast.error("Failed to load PHCs"))
-      .finally(() => setLoading(false))
-  }, [])
 
   const withCoords = phcs.filter((p) => p.latitude && p.longitude)
   const missing = phcs.filter((p) => !p.latitude || !p.longitude)

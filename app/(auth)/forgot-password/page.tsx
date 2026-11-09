@@ -153,8 +153,8 @@ function StepOtp({
     try {
       await api.post("/auth/forgot-password", { email })
       toast.success("A new code has been sent.")
-    } catch {
-      toast.error("Could not resend the code. Try again.")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not resend the code. Try again."))
     }
   }
 

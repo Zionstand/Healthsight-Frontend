@@ -1,13 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Search, MoreHorizontal, CheckCircle, XCircle, Eye } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
@@ -43,6 +42,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import api from "@/lib/api"
+import { useQueryClient } from "@tanstack/react-query"
+import { useApiQuery } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
+import { StatusBadge } from "@/components/StatusBadge"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,10 +66,6 @@ type PendingUser = {
   district: { id: string; name: string } | null
 }
 
-const STATUS_CONFIG: Record<AccountStatus, { label: string; className: string }> = {
-  PENDING: { label: "Pending", className: "bg-brand-amber-100 text-brand-amber-700 hover:bg-brand-amber-100" },
-  REJECTED: { label: "Rejected", className: "bg-brand-crimson-100 text-brand-crimson-700 hover:bg-brand-crimson-100" },
-}
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-GB", {
@@ -81,8 +80,21 @@ function formatDate(dateStr: string) {
 export default function PendingUsersPage() {
   const router = useRouter()
 
-  const [users, setUsers] = useState<PendingUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const qc = useQueryClient()
+  const { data: allUsers, isPending: loading } = useApiQuery<PendingUser[]>("/admin/users", {
+    errorMessage: "Failed to load users",
+  })
+  const users = useMemo(
+    () => (allUsers ?? []).filter((u) => ["PENDING", "REJECTED"].includes(u.accountStatus)),
+    [allUsers]
+  )
+  // Update the cached list in place so the change shows instantly.
+  const setUsers = (fn: (prev: PendingUser[]) => PendingUser[]) => {
+    qc.setQueryData<PendingUser[]>(["/admin/users"], (prev) => (prev ? fn(prev) : prev))
+    // Then confirm with the server; other admin screens share this list.
+    void qc.invalidateQueries({ queryKey: ["/admin/users"] })
+    void qc.invalidateQueries({ queryKey: ["/admin/stats"] })
+  }
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "ALL">("ALL")
 
@@ -91,18 +103,6 @@ export default function PendingUsersPage() {
   const [rejectLoading, setRejectLoading] = useState(false)
   const [approveLoading, setApproveLoading] = useState(false)
 
-  useEffect(() => {
-    api
-      .get("/admin/users")
-      .then((res) =>
-        setUsers(
-          res.data.filter((u: PendingUser) =>
-            ["PENDING", "REJECTED"].includes(u.accountStatus)
-          )
-        )
-      )
-      .finally(() => setLoading(false))
-  }, [])
 
   async function handleApprove(user: PendingUser) {
     setApproveLoading(true)
@@ -110,8 +110,8 @@ export default function PendingUsersPage() {
       await api.patch(`/admin/users/${user.username}/approve`)
       setUsers((prev) => prev.filter((u) => u.id !== user.id))
       toast.success(`${user.firstName} ${user.lastName} approved`)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to approve")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to approve"))
     } finally {
       setApproveLoading(false)
     }
@@ -132,8 +132,8 @@ export default function PendingUsersPage() {
       toast.success(`${rejectTarget.firstName} ${rejectTarget.lastName} rejected`)
       setRejectTarget(null)
       setRejectReason("")
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to reject")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to reject"))
     } finally {
       setRejectLoading(false)
     }
@@ -225,7 +225,6 @@ export default function PendingUsersPage() {
               </TableRow>
             ) : (
               filtered.map((user) => {
-                const status = STATUS_CONFIG[user.accountStatus]
                 return (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
@@ -242,9 +241,7 @@ export default function PendingUsersPage() {
                       {user.district?.name ?? "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className={status.className}>
-                        {status.label}
-                      </Badge>
+                      <StatusBadge status={user.accountStatus} />
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(user.createdAt)}

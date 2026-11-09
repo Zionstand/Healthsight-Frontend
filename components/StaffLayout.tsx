@@ -1,49 +1,63 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@/store/useAuth"
+import { useSessionUser, isAdmin } from "@/hooks/use-session-user"
+import { ShellSkeleton } from "@/components/shell/ShellSkeleton"
+import { AppTopBar } from "@/components/shell/AppTopBar"
+import { MobileTabBar } from "@/components/shell/MobileTabBar"
+import { CommandPaletteProvider } from "@/components/shell/CommandPalette"
 import { AppSidebar } from "@/components/app-sidebar"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { Separator } from "@/components/ui/separator"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { useApiQuery } from "@/lib/queries"
+import { useNavItems } from "@/lib/nav"
+
+type MyPeriods = {
+  open?: {
+    totalQuestions?: number
+    mySubmission?: { answeredCount: number } | null
+    coverage?: { total: number; complete: number }
+  }[]
+}
+
+/** Open assessments this person still has to finish, for the menu badge. */
+function useAssessmentsDue(enabled: boolean) {
+  const { data } = useApiQuery<MyPeriods>(enabled ? "/assessment/my" : null, { silent: true })
+  return (data?.open ?? []).filter(
+    (p) =>
+      p.coverage
+        ? p.coverage.complete < p.coverage.total
+        : !p.mySubmission || p.mySubmission.answeredCount < (p.totalQuestions ?? Infinity)
+  ).length
+}
 
 export function StaffLayout({ children }: { children: React.ReactNode }) {
-  const { user, _hasHydrated } = useAuth()
+  const { user, ready, verified } = useSessionUser()
   const router = useRouter()
+  const admin = ready && isAdmin(user)
+  const nav = useNavItems()
+  const due = useAssessmentsDue(ready && !admin && nav.some((n) => n.href === "/assessment"))
+  const badges = useMemo(() => ({ "/assessment": due }), [due])
 
+  // Admins have their own portal.
   useEffect(() => {
-    if (!_hasHydrated) return
-    if (!user) {
-      router.replace("/")
-      return
-    }
-    if (user.roles?.some((r) => r.name === "ADMIN")) {
-      router.replace("/admin/dashboard")
-    }
-  }, [user, _hasHydrated, router])
+    if (admin && verified) router.replace("/admin/dashboard")
+  }, [admin, verified, router])
 
-  if (!_hasHydrated || !user || user.roles?.some((r) => r.name === "ADMIN"))
-    return null
+  if (!ready || !user || admin) return <ShellSkeleton />
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="h-4" />
-          <span className="text-xs font-medium text-muted-foreground">
-            {user.roles?.map((r) => r.label).join(" · ")}
-          </span>
-        </header>
-        <div className="container flex flex-1 flex-col gap-4 py-8">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+    <CommandPaletteProvider>
+      <SidebarProvider>
+        <AppSidebar badges={badges} />
+        <SidebarInset>
+          <AppTopBar />
+          <main className="container flex flex-1 flex-col gap-4 py-6 pb-24 md:py-8 md:pb-8">
+            {children}
+          </main>
+          <MobileTabBar badges={badges} />
+        </SidebarInset>
+      </SidebarProvider>
+    </CommandPaletteProvider>
   )
 }

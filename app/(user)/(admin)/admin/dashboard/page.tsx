@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import Link from "next/link"
 import {
   Users,
@@ -20,7 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import api from "@/lib/api"
+import { downloadFile } from "@/lib/download"
+import { useApiQuery } from "@/lib/queries"
 
 type ScreeningByType = { type: string; count: number }
 
@@ -74,25 +75,19 @@ function isNew(dateStr: string) {
 }
 
 export default function AdminDashboardPage() {
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [recentUsers, setRecentUsers] = useState<AdminUser[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    Promise.all([
-      api.get<Stats>("/admin/stats"),
-      api.get<{ data: AdminUser[] }>("/admin/users"),
-    ])
-      .then(([statsRes, usersRes]) => {
-        setStats(statsRes.data)
-        setRecentUsers(
-          [...(usersRes.data as any).data ?? usersRes.data]
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 6),
-        )
-      })
-      .finally(() => setLoading(false))
-  }, [])
+  const { data: stats, isPending: statsLoading } = useApiQuery<Stats>("/admin/stats", {
+    errorMessage: "Failed to load dashboard",
+  })
+  const { data: users, isPending: usersLoading } = useApiQuery<AdminUser[] | { data: AdminUser[] }>(
+    "/admin/users"
+  )
+  const loading = statsLoading || usersLoading
+  const recentUsers = useMemo(() => {
+    const list = Array.isArray(users) ? users : (users?.data ?? [])
+    return [...list]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 6)
+  }, [users])
 
   const summaryCards = [
     {
@@ -190,12 +185,7 @@ export default function AdminDashboardPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                const a = document.createElement("a")
-                a.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/patients/export/csv`
-                a.download = "patients.csv"
-                a.click()
-              }}
+              onClick={() => downloadFile("/patients/export/csv", "patients.csv")}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Patients CSV
@@ -203,12 +193,7 @@ export default function AdminDashboardPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                const a = document.createElement("a")
-                a.href = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/admin/export/screenings`
-                a.download = "screenings.csv"
-                a.click()
-              }}
+              onClick={() => downloadFile("/admin/export/screenings", "screenings.csv")}
             >
               <Download className="mr-1.5 h-3.5 w-3.5" />
               Screenings CSV
@@ -351,7 +336,7 @@ export default function AdminDashboardPage() {
               { label: "General Assessment", href: "/admin/assessment/general", icon: ClipboardList },
               { label: "SafeCare Assessment", href: "/admin/assessment/safecare", icon: ShieldCheck },
               { label: "PHC Map View", href: "/admin/phcs/map", icon: Building2 },
-              { label: "User Management", href: "/admin/users", icon: Users },
+              { label: "Manage staff", href: "/admin/users", icon: Users },
             ].map(({ label, href, icon: Icon, badge }) => (
               <Link
                 key={href}

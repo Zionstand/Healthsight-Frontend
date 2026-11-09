@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useParams } from "next/navigation"
 import {
   CheckCircle,
@@ -15,7 +15,6 @@ import {
 import { toast } from "sonner"
 
 import { PageHeader } from "@/components/PageHeader"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +30,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import api from "@/lib/api"
+import { useApiState, useInvalidate } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
+import { StatusBadge } from "@/components/StatusBadge"
 
 type AccountStatus = "ACTIVE" | "PENDING" | "REJECTED" | "SUSPENDED"
 
@@ -55,27 +57,6 @@ type UserDetail = {
   } | null
 }
 
-const STATUS_CONFIG: Record<
-  AccountStatus,
-  { label: string; className: string }
-> = {
-  ACTIVE: {
-    label: "Active",
-    className: "bg-brand-verdant-100 text-brand-verdant-700 hover:bg-brand-verdant-100",
-  },
-  PENDING: {
-    label: "Pending",
-    className: "bg-brand-amber-100 text-brand-amber-700 hover:bg-brand-amber-100",
-  },
-  REJECTED: {
-    label: "Rejected",
-    className: "bg-brand-crimson-100 text-brand-crimson-700 hover:bg-brand-crimson-100",
-  },
-  SUSPENDED: {
-    label: "Suspended",
-    className: "bg-gray-100 text-gray-600 hover:bg-gray-100",
-  },
-}
 
 function formatRole(role: string) {
   return role
@@ -114,18 +95,20 @@ function InfoRow({
 
 export default function UserDetailPage() {
   const { username } = useParams<{ username: string }>()
-  const [user, setUser] = useState<UserDetail | null>(null)
-  const [loading, setLoading] = useState(true)
+  const invalidate = useInvalidate()
+  const {
+    data: user,
+    setData,
+    isPending: loading,
+  } = useApiState<UserDetail>(`/admin/users/${username}`, { errorMessage: "Failed to load user" })
+  // Show the change here at once, then refresh the lists and counts elsewhere.
+  const setUser = (next: Parameters<typeof setData>[0]) => {
+    setData(next)
+    void invalidate("/admin/users", "/admin/stats")
+  }
   const [actionLoading, setActionLoading] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState("")
-
-  useEffect(() => {
-    api
-      .get(`/admin/users/${username}`)
-      .then((res) => setUser(res.data))
-      .finally(() => setLoading(false))
-  }, [username])
 
   async function handleApprove() {
     if (!user) return
@@ -134,8 +117,8 @@ export default function UserDetailPage() {
       await api.patch(`/admin/users/${user.username}/approve`)
       setUser((u) => u && { ...u, accountStatus: "ACTIVE", actionBy: null })
       toast.success(`${user.firstName} ${user.lastName} approved`)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to approve user")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to approve user"))
     } finally {
       setActionLoading(false)
     }
@@ -159,8 +142,8 @@ export default function UserDetailPage() {
       toast.success(`${user.firstName} ${user.lastName} rejected`)
       setRejectOpen(false)
       setRejectReason("")
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to reject user")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to reject user"))
     } finally {
       setActionLoading(false)
     }
@@ -200,8 +183,6 @@ export default function UserDetailPage() {
       </>
     )
   }
-
-  const status = STATUS_CONFIG[user.accountStatus]
 
   return (
     <>
@@ -284,12 +265,7 @@ export default function UserDetailPage() {
               <CardTitle>Account Status</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Badge
-                variant="secondary"
-                className={`${status.className} text-sm`}
-              >
-                {status.label}
-              </Badge>
+              <StatusBadge status={user.accountStatus} className="text-sm" />
 
               {user.accountStatusReason && (
                 <>

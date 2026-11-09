@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -26,6 +26,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import api from "@/lib/api"
+import { useApiQuery } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
+import { StatCard } from "@/components/StatCard"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -105,31 +108,21 @@ function safecareBarColor(label: string) {
   return ""
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600",
-  ACTIVE: "bg-brand-verdant-100 text-brand-verdant-700",
-  CLOSED: "bg-brand-crimson-100 text-brand-crimson-700",
-}
 
 // ─── PAGE ─────────────────────────────────────────────────────────────────────
 
 export default function PeriodResultsPage() {
   const { id } = useParams<{ id: string }>()
-  const [results, setResults] = useState<Results | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: results = null, isPending: loading } = useApiQuery<Results>(
+    `/assessment/periods/${id}/results`,
+    { errorMessage: "Failed to load results" }
+  )
   const [selectedUser, setSelectedUser] = useState<SubmissionSummary | null>(
     null
   )
   const [userDetail, setUserDetail] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
-  useEffect(() => {
-    api
-      .get(`/assessment/periods/${id}/results`)
-      .then((res) => setResults(res.data))
-      .catch(() => toast.error("Failed to load results"))
-      .finally(() => setLoading(false))
-  }, [id])
 
   async function openUserDetail(sub: SubmissionSummary) {
     setSelectedUser(sub)
@@ -139,8 +132,8 @@ export default function PeriodResultsPage() {
         `/assessment/periods/${id}/results/${sub.phc?.id ?? ""}`
       )
       setUserDetail(res.data)
-    } catch {
-      toast.error("Failed to load submission detail")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to load submission detail"))
     } finally {
       setDetailLoading(false)
     }
@@ -460,24 +453,3 @@ export default function PeriodResultsPage() {
   )
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  bg,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  bg: string
-}) {
-  return (
-    <div className={`space-y-2 rounded-lg border p-4 ${bg}`}>
-      <div className="flex items-center gap-2">
-        {icon}
-        <span className="text-sm text-muted-foreground">{label}</span>
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
-    </div>
-  )
-}

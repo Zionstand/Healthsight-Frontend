@@ -1,103 +1,84 @@
-import axios, { AxiosError, AxiosInstance } from "axios"
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios"
 import { useAuth } from "@/store/useAuth"
-import { env } from "./env"
+import { queryClient } from "./query-client"
 
-const api: AxiosInstance = axios.create({
-  baseURL: `${env.NEXT_PUBLIC_BACKEND_URL}/api`,
+/**
+ * Browser calls go to /api on this site, which next.config rewrites to the
+ * backend. That keeps the httpOnly auth cookies first-party, so no token ever
+ * touches JavaScript and nothing needs attaching to requests by hand.
+ */
+const api = axios.create({
+  baseURL: "/api",
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 })
 
-const PUBLIC_ROUTES = [
+// Calls that must never trigger a refresh or a sign-out.
+const AUTH_ROUTES = [
   "/auth/login",
   "/auth/register",
   "/auth/forgot-password",
-  "/auth/verify-code",
-  "/auth/set-new-password",
-  "/auth/refresh", // never re-intercept the refresh endpoint itself
+  "/auth/verify-otp",
+  "/auth/reset-password",
+  "/auth/force-change-password",
+  "/auth/refresh",
+  "/auth/logout",
 ]
+const isAuthRoute = (url = "") => AUTH_ROUTES.some((r) => url.includes(r))
 
-function isPublicRoute(url?: string) {
-  if (!url) return false
-  return PUBLIC_ROUTES.some((r) => url.includes(r))
+// One refresh at a time; concurrent 401s wait for the same attempt.
+let refreshing: Promise<boolean> | null = null
+function refreshSession() {
+  refreshing ??= api
+    .post("/auth/refresh")
+    .then(() => true)
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null
+    })
+  return refreshing
 }
 
-let isRefreshing = false
-let failedQueue: Array<{
-  resolve: (v?: any) => void
-  reject: (e?: any) => void
-}> = []
-
-function processQueue(error: any) {
-  failedQueue.forEach(({ resolve, reject }) => {
-    if (error) reject(error)
-    else resolve()
-  })
-  failedQueue = []
+/**
+ * Drops all signed-in state and returns to sign-in. `next` brings the person
+ * back to where they were once they sign in again.
+ */
+export function endSession(reason?: "expired" | "inactive") {
+  useAuth.getState().clearUser()
+  queryClient.clear()
+  if (typeof window === "undefined") return
+  const here = window.location.pathname + window.location.search
+  const params = new URLSearchParams()
+  if (reason) params.set("reason", reason)
+  if (here !== "/") params.set("next", here)
+  const qs = params.toString()
+  window.location.assign(qs ? `/?${qs}` : "/")
 }
 
-api.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("access_token")
-    if (token) config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+type RetryConfig = InternalAxiosRequestConfig & { _retry?: boolean }
 
 api.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError & { config?: any }) => {
-    const originalRequest = error.config
+  async (error: AxiosError<{ message?: string | string[] }>) => {
+    const original = error.config as RetryConfig | undefined
     const status = error.response?.status
-    const message = (error.response?.data as any)?.message
-    const path = originalRequest?.url || ""
+    if (!original || isAuthRoute(original.url)) return Promise.reject(error)
 
-    if (isPublicRoute(path)) {
+    // Access token expired: refresh once, then replay the request.
+    if (status === 401 && !original._retry) {
+      original._retry = true
+      if (await refreshSession()) return api(original)
+      // The refresh endpoint clears the cookies; tell the person why they left.
+      await api.post("/auth/logout").catch(() => undefined)
+      endSession("expired")
       return Promise.reject(error)
     }
 
-    // Handle 401 (access token expired)
-    if (status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject })
-        }).then(() => api(originalRequest))
-      }
-
-      originalRequest._retry = true
-      isRefreshing = true
-
-      try {
-        const { data } = await api.post("/auth/refresh", {}, { withCredentials: true })
-
-        if (data?.accessToken) {
-          localStorage.setItem("access_token", data.accessToken)
-        }
-
-        processQueue(null)
-        isRefreshing = false
-
-        return api(originalRequest)
-      } catch (err) {
-        processQueue(err)
-        isRefreshing = false
-
-        // Refresh failed — session fully expired, send to login
-        const { clearUser } = useAuth.getState()
-        clearUser()
-        if (typeof window !== "undefined") window.location.assign("/")
-
-        return Promise.reject(err)
-      }
-    }
-
-    // Handle auth guard rejections (role/session) — but NOT business logic 403s.
-    // Business logic ForbiddenExceptions have custom messages (e.g. "You must purchase
-    // this product first"), while the auth/roles guard returns exactly "Forbidden".
-    if (message === "Unauthorized" || message === "Forbidden") {
-      const { clearUser } = useAuth.getState()
-      clearUser()
-      if (typeof window !== "undefined") window.location.assign("/")
+    // The account was suspended, rejected or deleted mid-session.
+    const msg = error.response?.data?.message
+    if (status === 403 && typeof msg === "string" && /account is (not active|pending)/i.test(msg)) {
+      await api.post("/auth/logout").catch(() => undefined)
+      endSession("inactive")
     }
 
     return Promise.reject(error)
@@ -106,49 +87,32 @@ api.interceptors.response.use(
 
 export default api
 
-// ── Authenticated helpers ──────────────────────────────────────────────────────
-
+// ── Helpers ────────────────────────────────────────────────────────────────────
 export async function fetchData<T>(url: string): Promise<T> {
-  const res = await api.get(url)
+  const res = await api.get<T>(url)
   return res.data
 }
-export async function postData<T>(url: string, data: any): Promise<T> {
-  const res = await api.post(url, data)
+export async function postData<T>(url: string, data: unknown): Promise<T> {
+  const res = await api.post<T>(url, data)
   return res.data
 }
-export async function updateData<T>(url: string, data: any): Promise<T> {
-  const res = await api.patch(url, data)
+export async function updateData<T>(url: string, data: unknown): Promise<T> {
+  const res = await api.patch<T>(url, data)
   return res.data
 }
 export async function deleteData<T>(url: string): Promise<T> {
-  const res = await api.delete(url)
+  const res = await api.delete<T>(url)
   return res.data
 }
-export async function uploadFile<T>(
-  url: string,
-  formData: FormData
-): Promise<T> {
-  const res = await api.post(url, formData, {
+export async function uploadFile<T>(url: string, formData: FormData): Promise<T> {
+  const res = await api.post<T>(url, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
   return res.data
 }
-export async function uploadFilePatch<T>(
-  url: string,
-  formData: FormData
-): Promise<T> {
-  const res = await api.patch(url, formData, {
+export async function uploadFilePatch<T>(url: string, formData: FormData): Promise<T> {
+  const res = await api.patch<T>(url, formData, {
     headers: { "Content-Type": "multipart/form-data" },
   })
   return res.data
-}
-
-// ── Public (unauthenticated) helper ───────────────────────────────────────────
-// Uses a plain fetch so it never triggers the auth interceptor / redirect.
-export async function publicFetch<T>(url: string): Promise<T> {
-  const res = await fetch(`${env.NEXT_PUBLIC_BACKEND_URL}${url}`, {
-    next: { revalidate: 60 },
-  })
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`)
-  return res.json() as Promise<T>
 }

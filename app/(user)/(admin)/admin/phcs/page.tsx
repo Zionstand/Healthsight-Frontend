@@ -62,6 +62,8 @@ import {
 } from "@/components/ui/form"
 import api from "@/lib/api"
 import { IconPlus } from "@tabler/icons-react"
+import { useApiQuery, useApiState, useInvalidate } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +116,7 @@ function PhcFormSheet({
   editing: Phc | null
   onSaved: (phc: Phc) => void
 }) {
-  const [districts, setDistricts] = useState<Location[]>([])
+  const { data: districts = [] } = useApiQuery<Location[]>("/locations/districts")
   const [lgas, setLgas] = useState<Location[]>([])
   const [loadingLgas, setLoadingLgas] = useState(false)
 
@@ -146,10 +148,6 @@ function PhcFormSheet({
     }
   }, [open, editing]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load districts once
-  useEffect(() => {
-    api.get("/locations/districts").then((res) => setDistricts(res.data))
-  }, [])
 
   async function handleDistrictChange(districtId: string) {
     form.setValue("districtId", districtId)
@@ -185,11 +183,8 @@ function PhcFormSheet({
       onSaved(saved)
       toast.success(editing ? "PHC updated" : "PHC created")
       onOpenChange(false)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Something went wrong"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Something went wrong"))
     }
   }
 
@@ -361,8 +356,18 @@ function PhcFormSheet({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AdminPhcsPage() {
-  const [phcs, setPhcs] = useState<Phc[]>([])
-  const [loading, setLoading] = useState(true)
+  const invalidate = useInvalidate()
+  const {
+    data: phcData,
+    setData: setPhcData,
+    isPending: loading,
+  } = useApiState<Phc[]>("/admin/phcs", { errorMessage: "Failed to load PHCs" })
+  const phcs = phcData ?? []
+  // Edit in place, then refresh the PHC lists other screens use (map, sign-up).
+  const setPhcs = (fn: (prev: Phc[]) => Phc[]) => {
+    setPhcData((prev) => fn(prev ?? []))
+    void invalidate("/locations/phcs", "/admin/stats")
+  }
   const [search, setSearch] = useState("")
   const [districtFilter, setDistrictFilter] = useState("ALL")
 
@@ -372,12 +377,6 @@ export default function AdminPhcsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Phc | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  useEffect(() => {
-    api
-      .get("/admin/phcs")
-      .then((res) => setPhcs(res.data))
-      .finally(() => setLoading(false))
-  }, [])
 
   const districts = Array.from(
     new Map(phcs.map((p) => [p.lga.district.id, p.lga.district.name])).entries()
@@ -409,8 +408,8 @@ export default function AdminPhcsPage() {
       setPhcs((prev) => prev.filter((p) => p.id !== deleteTarget.id))
       toast.success(`${deleteTarget.name} deleted`)
       setDeleteTarget(null)
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to delete PHC")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to delete PHC"))
     } finally {
       setDeleteLoading(false)
     }
@@ -522,7 +521,7 @@ export default function AdminPhcsPage() {
                       className={
                         phc._count.users > 0
                           ? "bg-brand-verdant-100 text-brand-verdant-700 hover:bg-brand-verdant-100"
-                          : "bg-gray-100 text-gray-500 hover:bg-gray-100"
+                          : "bg-muted text-muted-foreground hover:bg-muted"
                       }
                     >
                       {phc._count.users} staff

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { PlusCircle, Pencil, PowerOff, Power, Users } from "lucide-react"
 import { toast } from "sonner"
 
@@ -41,6 +41,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import api from "@/lib/api"
 import { IconPlus } from "@tabler/icons-react"
+import { useApiState } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
 
 type Role = {
   id: string
@@ -66,8 +68,13 @@ const EMPTY_FORM: FormState = {
 }
 
 export default function AdminRolesPage() {
-  const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
+  const {
+    data: rolesData,
+    setData: setRolesData,
+    isPending: loading,
+  } = useApiState<Role[]>("/roles/all", { errorMessage: "Failed to load roles" })
+  const roles = rolesData ?? []
+  const setRoles = (fn: (prev: Role[]) => Role[]) => setRolesData((prev) => fn(prev ?? []))
   const [search, setSearch] = useState("")
 
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -78,12 +85,6 @@ export default function AdminRolesPage() {
   const [toggleTarget, setToggleTarget] = useState<Role | null>(null)
   const [toggling, setToggling] = useState(false)
 
-  useEffect(() => {
-    api
-      .get("/roles/all")
-      .then((res) => setRoles(res.data))
-      .finally(() => setLoading(false))
-  }, [])
 
   const filtered = roles.filter(
     (r) =>
@@ -133,11 +134,8 @@ export default function AdminRolesPage() {
         toast.success("Role created")
       }
       setSheetOpen(false)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Failed to save role"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to save role"))
     } finally {
       setSaving(false)
     }
@@ -160,10 +158,8 @@ export default function AdminRolesPage() {
         `"${toggleTarget.label}" ${toggleTarget.isActive ? "deactivated" : "activated"}`
       )
       setToggleTarget(null)
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.message || "Failed to update role status"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to update role status"))
     } finally {
       setToggling(false)
     }
@@ -248,7 +244,7 @@ export default function AdminRolesPage() {
                       </Badge>
                     ) : (
                       <Badge
-                        className="bg-gray-100 text-gray-500 hover:bg-gray-100"
+                        className="bg-muted text-muted-foreground hover:bg-muted"
                         variant="secondary"
                       >
                         Restricted
@@ -271,7 +267,7 @@ export default function AdminRolesPage() {
                       </Badge>
                     ) : (
                       <Badge
-                        className="bg-gray-100 text-gray-500 hover:bg-gray-100"
+                        className="bg-muted text-muted-foreground hover:bg-muted"
                         variant="secondary"
                       >
                         Inactive

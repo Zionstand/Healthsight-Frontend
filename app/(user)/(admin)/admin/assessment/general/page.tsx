@@ -91,6 +91,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import api from "@/lib/api"
+import { useApiQuery, useApiState, useInvalidate } from "@/lib/queries"
+import { apiErrorMessage } from "@/lib/api-error"
+import { StatusBadge } from "@/components/StatusBadge"
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -129,11 +132,6 @@ type Period = {
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
-  ACTIVE: "bg-brand-verdant-100 text-brand-verdant-700 dark:bg-brand-verdant-900 dark:text-brand-verdant-300",
-  CLOSED: "bg-brand-crimson-100 text-brand-crimson-700 dark:bg-brand-crimson-900 dark:text-brand-crimson-300",
-}
 
 const Q_TYPE_LABELS: Record<string, string> = {
   YES_NO_NA: "Yes / No / N/A",
@@ -214,11 +212,25 @@ function SortableItem({
 
 export default function GeneralAssessmentPage() {
   const router = useRouter()
-  const [periods, setPeriods] = useState<Period[]>([])
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
+  const GENERAL = { type: "GENERAL" }
+  const invalidate = useInvalidate()
+  const periodsQ = useApiQuery<Period[]>("/assessment/periods", {
+    params: GENERAL,
+    errorMessage: "Failed to load assessment data",
+  })
+  const questionsQ = useApiState<Question[]>("/assessment/questions", { params: GENERAL })
+  const categoriesQ = useApiState<Category[]>("/assessment/categories", { params: GENERAL })
+  const rolesQ = useApiQuery<Role[]>("/roles")
+  const periods = periodsQ.data ?? []
+  const questions = questionsQ.data ?? []
+  const categories = categoriesQ.data ?? []
+  const roles = rolesQ.data ?? []
+  const loading =
+    periodsQ.isPending || questionsQ.isPending || categoriesQ.isPending || rolesQ.isPending
+  // Drag-and-drop reorders show instantly; the cache keeps them on return.
+  const setCategories = (next: Category[]) => categoriesQ.setData(next)
+  const setQuestions = (fn: (prev: Question[]) => Question[]) =>
+    questionsQ.setData((prev) => fn(prev ?? []))
 
   const [catSheet, setCatSheet] = useState<{ open: boolean; data?: Category }>({
     open: false,
@@ -241,38 +253,16 @@ export default function GeneralAssessmentPage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  async function fetchAll() {
-    setLoading(true)
-    try {
-      const [periodsRes, questionsRes, categoriesRes, rolesRes] =
-        await Promise.all([
-          api.get("/assessment/periods?type=GENERAL"),
-          api.get("/assessment/questions?type=GENERAL"),
-          api.get("/assessment/categories?type=GENERAL"),
-          api.get("/roles"),
-        ])
-      setPeriods(periodsRes.data)
-      setQuestions(questionsRes.data)
-      setCategories(categoriesRes.data)
-      setRoles(rolesRes.data)
-    } catch {
-      toast.error("Failed to load assessment data")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchAll()
-  }, [])
+  const fetchAll = () =>
+    invalidate("/assessment/periods", "/assessment/questions", "/assessment/categories")
 
   async function updateStatus(id: string, status: string) {
     try {
       await api.patch(`/assessment/periods/${id}`, { status })
       toast.success("Status updated")
       fetchAll()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Failed to update status")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to update status"))
     }
   }
 
@@ -284,8 +274,8 @@ export default function GeneralAssessmentPage() {
       toast.success("Deleted successfully")
       setDeleteTarget(null)
       fetchAll()
-    } catch (err: any) {
-      toast.error(err?.response?.data?.message || "Delete failed")
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Delete failed"))
     } finally {
       setDeleting(false)
     }
@@ -310,7 +300,7 @@ export default function GeneralAssessmentPage() {
     reordered.forEach((cat) => {
       api
         .patch(`/assessment/categories/${cat.id}`, { order: cat.order })
-        .catch(() => toast.error("Failed to save category order"))
+        .catch((err) => toast.error(apiErrorMessage(err, "Failed to save category order")))
     })
   }
 
@@ -337,7 +327,7 @@ export default function GeneralAssessmentPage() {
       reordered.forEach((q) => {
         api
           .patch(`/assessment/questions/${q.id}`, { order: q.order })
-          .catch(() => toast.error("Failed to save question order"))
+          .catch((err) => toast.error(apiErrorMessage(err, "Failed to save question order")))
       })
     }
   }
@@ -454,11 +444,7 @@ export default function GeneralAssessmentPage() {
                 <TableRow key={p.id}>
                   <TableCell className="font-medium">{p.title}</TableCell>
                   <TableCell>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[p.status]}`}
-                    >
-                      {p.status}
-                    </span>
+                    <StatusBadge status={p.status} />
                   </TableCell>
                   <TableCell className="text-sm">
                     {format(new Date(p.startDate), "dd MMM yyyy, HH:mm")}
@@ -888,11 +874,8 @@ function CategorySheet({
       }
       onClose()
       onSaved()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Failed to save category"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to save category"))
     }
   }
 
@@ -1028,11 +1011,8 @@ function QuestionSheet({
       }
       onClose()
       onSaved()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Failed to save question"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to save question"))
     }
   }
 
@@ -1265,11 +1245,8 @@ function PeriodSheet({
       }
       onClose()
       onSaved()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      toast.error(
-        Array.isArray(msg) ? msg.join(", ") : msg || "Failed to save period"
-      )
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Failed to save period"))
     }
   }
 

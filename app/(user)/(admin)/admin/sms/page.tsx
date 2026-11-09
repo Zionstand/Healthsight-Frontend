@@ -1,12 +1,9 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import { toast } from "sonner"
 import { format } from "date-fns"
-import { MessageSquare, ChevronLeft, ChevronRight } from "lucide-react"
+import { MessageSquare } from "lucide-react"
 
 import { PageHeader } from "@/components/PageHeader"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -24,7 +21,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import api from "@/lib/api"
+import { useApiQuery } from "@/lib/queries"
+import { StatusBadge, humanize } from "@/components/StatusBadge"
+import { StatCard } from "@/components/StatCard"
+import {
+  ListPagination,
+  ListToolbar,
+  TableState,
+} from "@/components/list/ListKit"
+import { useListParams } from "@/hooks/use-list-params"
+
+const PAGE_SIZE = 20
 
 type SmsLog = {
   id: string
@@ -54,41 +61,21 @@ const SMS_TYPES = [
 ]
 
 export default function SmsAdminPage() {
-  const [logs, setLogs] = useState<SmsLog[]>([])
-  const [stats, setStats] = useState<SmsStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [filterType, setFilterType] = useState("")
-  const [filterStatus, setFilterStatus] = useState("")
+  const [params, setParams] = useListParams({ page: 1, type: "", status: "" })
+  const filtered = !!(params.type || params.status)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params: any = { page, limit: 20 }
-      if (filterType) params.smsType = filterType
-      if (filterStatus) params.status = filterStatus
+  const { data, isPending: loading } = useApiQuery<{
+    data: SmsLog[]
+    total: number
+    totalPages: number
+  }>("/sms", {
+    params: { page: params.page, limit: PAGE_SIZE, smsType: params.type, status: params.status },
+    keepPrevious: true,
+    errorMessage: "Failed to load SMS logs",
+  })
+  const { data: stats } = useApiQuery<SmsStats>("/sms/stats")
+  const logs = data?.data ?? []
 
-      const [logsRes, statsRes] = await Promise.all([
-        api.get("/sms", { params }),
-        api.get("/sms/stats"),
-      ])
-      setLogs(logsRes.data.data)
-      setTotal(logsRes.data.total)
-      setTotalPages(logsRes.data.totalPages)
-      setStats(statsRes.data)
-    } catch {
-      toast.error("Failed to load SMS logs")
-    } finally {
-      setLoading(false)
-    }
-  }, [page, filterType, filterStatus])
-
-  useEffect(() => { fetchData() }, [fetchData])
-
-  const statusVariant = (status: string): any =>
-    status === "SENT" ? "default" : status === "FAILED" ? "destructive" : "secondary"
 
   return (
     <div className="space-y-6">
@@ -100,14 +87,14 @@ export default function SmsAdminPage() {
       {/* Stats */}
       {stats ? (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <StatCard label="Total" value={stats.total} />
-          <StatCard label="Delivered" value={stats.sent} color="text-brand-verdant-600" />
+          <StatCard label="Total sent" value={stats.total} />
+          <StatCard label="Delivered" value={stats.sent} color="text-brand-verdant-700 dark:text-brand-verdant-300" />
           <StatCard label="Failed" value={stats.failed} color="text-destructive" />
-          <StatCard label="Pending" value={stats.pending} color="text-brand-amber-600" />
+          <StatCard label="Pending" value={stats.pending} color="text-brand-amber-700 dark:text-brand-amber-300" />
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
       )}
 
@@ -127,20 +114,20 @@ export default function SmsAdminPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <Select value={filterType} onValueChange={(v) => { setFilterType(v === "all" ? "" : v); setPage(1) }}>
-          <SelectTrigger className="w-[220px]">
+      <ListToolbar>
+        <Select value={params.type || "all"} onValueChange={(v) => setParams({ type: v === "all" ? "" : v })}>
+          <SelectTrigger className="w-full sm:w-56" aria-label="Message type">
             <SelectValue placeholder="All types" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
             {SMS_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>{t.replace(/_/g, " ")}</SelectItem>
+              <SelectItem key={t} value={t}>{humanize(t)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v === "all" ? "" : v); setPage(1) }}>
-          <SelectTrigger className="w-[160px]">
+        <Select value={params.status || "all"} onValueChange={(v) => setParams({ status: v === "all" ? "" : v })}>
+          <SelectTrigger className="w-full sm:w-40" aria-label="Status">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -150,60 +137,55 @@ export default function SmsAdminPage() {
             <SelectItem value="PENDING">Pending</SelectItem>
           </SelectContent>
         </Select>
-        {(filterType || filterStatus) && (
-          <Button variant="ghost" size="sm" onClick={() => { setFilterType(""); setFilterStatus(""); setPage(1) }}>
-            Clear
+        {filtered && (
+          <Button variant="ghost" size="sm" onClick={() => setParams({ type: "", status: "" })}>
+            Clear filters
           </Button>
         )}
-      </div>
+      </ListToolbar>
 
       {/* Table */}
-      <div className="rounded-lg border">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Phone</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Message</TableHead>
+              <TableHead>Recipient</TableHead>
+              <TableHead className="hidden md:table-cell">Type</TableHead>
+              <TableHead className="hidden lg:table-cell">Message</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Sent By</TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead className="hidden lg:table-cell">Sent by</TableHead>
+              <TableHead className="hidden sm:table-cell">Date</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading
-              ? [...Array(8)].map((_, i) => (
-                  <TableRow key={i}>
-                    {[...Array(6)].map((_, j) => (
-                      <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              : logs.length === 0
-              ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-14 text-center text-muted-foreground">
-                      <MessageSquare className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      No SMS logs found.
-                    </TableCell>
-                  </TableRow>
-                )
-              : logs.map((log) => (
+            <TableState
+              loading={loading}
+              empty={logs.length === 0}
+              columns={6}
+              icon={<MessageSquare />}
+              title={filtered ? "No messages match these filters" : "No messages sent yet"}
+              description={filtered ? "Try another type or status." : "Reminders and alerts the system sends will be logged here."}
+            />
+            {!loading &&
+              logs.map((log) => (
                   <TableRow key={log.id}>
-                    <TableCell className="font-mono text-sm">{log.phoneNumber}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {log.smsType.replace(/_/g, " ")}
+                    <TableCell>
+                      <p className="font-mono text-sm">{log.phoneNumber}</p>
+                      <p className="text-xs text-muted-foreground md:hidden">{humanize(log.smsType)}</p>
                     </TableCell>
-                    <TableCell className="max-w-[260px]">
+                    <TableCell className="hidden text-xs whitespace-nowrap text-muted-foreground md:table-cell">
+                      {humanize(log.smsType)}
+                    </TableCell>
+                    <TableCell className="hidden max-w-[260px] lg:table-cell">
                       <p className="truncate text-sm text-muted-foreground">{log.message}</p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant(log.status)}>{log.status}</Badge>
+                      <StatusBadge status={log.status} />
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
                       {log.sentBy ? `${log.sentBy.firstName} ${log.sentBy.lastName}` : "System"}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    <TableCell className="hidden text-xs whitespace-nowrap text-muted-foreground sm:table-cell">
                       {format(new Date(log.createdAt), "dd MMM yyyy, HH:mm")}
                     </TableCell>
                   </TableRow>
@@ -212,28 +194,15 @@ export default function SmsAdminPage() {
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Page {page} of {totalPages} &bull; {total} total</span>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="outline" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <ListPagination
+        page={params.page}
+        totalPages={data?.totalPages ?? 1}
+        total={data?.total ?? 0}
+        pageSize={PAGE_SIZE}
+        onPageChange={(page) => setParams({ page })}
+        noun="message"
+      />
     </div>
   )
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
-  return (
-    <div className="rounded-lg border p-4 space-y-1">
-      <p className="text-xs text-muted-foreground capitalize">{label}</p>
-      <p className={`text-2xl font-bold ${color ?? ""}`}>{value}</p>
-    </div>
-  )
-}

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   IconLayoutDashboard,
   IconUsers,
@@ -15,7 +15,6 @@ import {
   IconBadge,
   IconChartBar,
 } from "@tabler/icons-react"
-import { toast } from "sonner"
 
 import {
   Sidebar,
@@ -30,6 +29,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   DropdownMenu,
@@ -41,34 +41,34 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Logo } from "@/components/Logo"
 import { useAuth } from "@/store/useAuth"
-import api from "@/lib/api"
+import { useSignout } from "@/hooks/use-signout"
 
-const managementLinks = [
+export const managementLinks = [
   { label: "Dashboard", href: "/admin/dashboard", icon: IconLayoutDashboard },
   { label: "Assessment Analysis", href: "/admin/analytics", icon: IconChartBar },
-  { label: "Users", href: "/admin/users", icon: IconUsers },
+  { label: "Staff", href: "/admin/users", icon: IconUsers },
   { label: "Roles", href: "/admin/roles", icon: IconShield },
   { label: "PHCs", href: "/admin/phcs", icon: IconBuildingHospital },
 ]
 
-const operationsLinks = [
+export const operationsLinks = [
   // { label: "Create Directors", href: "/admin/directors", icon: IconUserPlus },
   {
-    label: "View Pending Users",
+    label: "Pending approvals",
     href: "/admin/pending-users",
     icon: IconUserPlus,
     showBadge: true,
   },
 ]
 
-const settingsLinks = [
+export const settingsLinks = [
   {
     label: "General Assessment",
     href: "/admin/assessment/general",
     icon: IconCalendarStats,
   },
   {
-    label: "Safecare Assessment",
+    label: "SafeCare Assessment",
     href: "/admin/assessment/safecare",
     icon: IconCalendarCheck,
   },
@@ -76,8 +76,9 @@ const settingsLinks = [
 
 export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
   const pathname = usePathname()
-  const router = useRouter()
-  const { user, clearUser } = useAuth()
+  const { user } = useAuth()
+  const { setOpenMobile } = useSidebar()
+  const closeOnPhone = () => setOpenMobile(false)
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/")
@@ -86,16 +87,7 @@ export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase()
     : "AD"
 
-  async function handleSignOut() {
-    try {
-      await api.post("/auth/logout")
-    } catch {
-      // ignore
-    }
-    clearUser()
-    router.push("/")
-    toast.success("Signed out")
-  }
+  const handleSignOut = useSignout()
 
   return (
     <Sidebar collapsible="icon">
@@ -127,7 +119,7 @@ export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
                     isActive={isActive(href)}
                     tooltip={label}
                   >
-                    <Link href={href}>
+                    <Link href={href} onClick={closeOnPhone}>
                       <Icon />
                       <span>{label}</span>
                     </Link>
@@ -151,13 +143,13 @@ export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
                     isActive={isActive(href)}
                     tooltip={label}
                   >
-                    <Link href={href}>
+                    <Link href={href} onClick={closeOnPhone}>
                       <Icon />
                       <span>{label}</span>
                     </Link>
                   </SidebarMenuButton>
                   {showBadge && pendingCount > 0 && (
-                    <SidebarMenuBadge className="bg-amber-500 text-white">
+                    <SidebarMenuBadge className="rounded-full bg-brand-amber-500 px-1.5 text-brand-charcoal-900 tabular-nums">
                       {pendingCount}
                     </SidebarMenuBadge>
                   )}
@@ -180,7 +172,7 @@ export function AdminSidebar({ pendingCount = 0 }: { pendingCount?: number }) {
                     isActive={isActive(href)}
                     tooltip={label}
                   >
-                    <Link href={href}>
+                    <Link href={href} onClick={closeOnPhone}>
                       <Icon />
                       <span>{label}</span>
                     </Link>

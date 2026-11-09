@@ -1,10 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { IconSettings, IconHelp } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -18,30 +16,17 @@ import {
 import { useAuth } from "@/store/useAuth"
 import { getNavByRole } from "@/lib/getNavByRole"
 import { Logo } from "./Logo"
+import Link from "next/link"
 
-function getSettingsUrl(role?: string | null) {
-  if (role === "ADMIN") return "/admin/settings"
-  if (role === "LANDLORD") return "/landlord/settings"
-  return "/settings"
-}
 
-export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({
+  badges,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & { badges?: Record<string, number> }) {
   const { user } = useAuth()
-  const primaryRole = user?.role ?? user?.roles?.[0]?.name
 
   const navItems = React.useMemo(() => getNavByRole(user), [user])
 
-  const navSecondary = React.useMemo(
-    () => [
-      {
-        title: "Settings",
-        url: getSettingsUrl(primaryRole),
-        icon: IconSettings,
-      },
-      { title: "Get Help", url: "/help", icon: IconHelp, comingSoon: true },
-    ],
-    [primaryRole]
-  )
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -53,17 +38,16 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="hover:bg-transparent"
             >
-              <a href="/">
+              <Link href="/dashboard" aria-label="Healthsight home">
                 <Logo className="size-9" />
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
-        <NavMain items={navItems} />
-        <NavSecondary items={navSecondary} className="mt-auto" />
+        <NavMain items={navItems} badges={badges} />
       </SidebarContent>
 
       <SidebarFooter>

@@ -6,8 +6,8 @@ import { IconArrowLeft } from "@tabler/icons-react"
 import { Badge } from "./ui/badge"
 
 interface PageHeaderProps {
-  title?: string | any
-  description?: string | any
+  title?: ReactNode
+  description?: ReactNode
   action?: ReactNode
   back?: boolean
   query?: string
@@ -45,18 +45,18 @@ export function PageHeader({
   }
 
   return (
-    <div className="mb-4">
+    <div className="mb-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-2">
           {back && (
-            <Button onClick={handleBack} size="icon-lg" variant="secondary">
+            <Button onClick={handleBack} size="icon" variant="ghost" aria-label="Go back" className="-ml-2">
               <IconArrowLeft />
             </Button>
           )}
           <div>
-            <h1 className="text-3xl font-semibold">{title}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">{title}</h1>
             {description && (
-              <p className="mt-2 text-sm text-muted-foreground md:text-base">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {description}
               </p>
             )}

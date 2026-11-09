@@ -1,12 +1,12 @@
 "use client";
 
-import { IconCirclePlusFilled, IconMail, type Icon } from "@tabler/icons-react";
+import { type Icon } from "@tabler/icons-react";
 
-import { Button } from "@/components/ui/button";
 import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -14,13 +14,14 @@ import {
 import { Badge } from "./ui/badge";
 import { type LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/store/useAuth";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 export function NavMain({
   items,
+  badges = {},
 }: {
+  /** Counts shown next to a link, keyed by its slug. */
+  badges?: Record<string, number>;
   items: {
     label: string;
     slug: string;
@@ -31,7 +32,6 @@ export function NavMain({
 }) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
-  const { user } = useAuth(); // Get user and admin status
 
   const handleLinkClick = () => {
     setOpenMobile(false);
@@ -61,19 +61,17 @@ export function NavMain({
                     </Badge>
                   </SidebarMenuButton>
                 ) : (
-                  <SidebarMenuButton
-                    tooltip={item.label}
-                    asChild
-                    className={cn(
-                      isActive &&
-                        "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
-                    )}
-                  >
+                  <SidebarMenuButton tooltip={item.label} asChild isActive={isActive}>
                     <Link href={item.slug} onClick={handleLinkClick}>
                       {IconComponent && <IconComponent className="size-4" />}
                       <span>{item?.label.replace("Admin ", "")}</span>
                     </Link>
                   </SidebarMenuButton>
+                )}
+                {(badges[item.slug] ?? 0) > 0 && (
+                  <SidebarMenuBadge className="rounded-full bg-brand-amber-500 px-1.5 text-brand-charcoal-900 tabular-nums">
+                    {badges[item.slug]}
+                  </SidebarMenuBadge>
                 )}
               </SidebarMenuItem>
             );

@@ -1,12 +1,14 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { IconArrowsMaximize, IconExternalLink, IconLock } from "@tabler/icons-react"
 
 import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import api from "@/lib/api"
+import { useApiQuery } from "@/lib/queries"
+import { apiErrorStatus } from "@/lib/api-error"
 
 type State =
   | { status: "loading" }
@@ -18,17 +20,14 @@ type State =
 // (GET /analytics/powerbi), so it never ships in the public JS bundle.
 export function PowerBiReport() {
   const frameWrap = useRef<HTMLDivElement>(null)
-  const [state, setState] = useState<State>({ status: "loading" })
   const [frameLoaded, setFrameLoaded] = useState(false)
-
-  useEffect(() => {
-    api
-      .get<{ url: string }>("/analytics/powerbi")
-      .then((res) => setState({ status: "ready", url: res.data.url }))
-      .catch((err) =>
-        setState({ status: err?.response?.status === 403 ? "forbidden" : "error" })
-      )
-  }, [])
+  // This screen shows its own "no access" and error states, so no toast.
+  const report = useApiQuery<{ url: string }>("/analytics/powerbi", { silent: true })
+  const state: State = report.data
+    ? { status: "ready", url: report.data.url }
+    : report.isError
+      ? { status: apiErrorStatus(report.error) === 403 ? "forbidden" : "error" }
+      : { status: "loading" }
 
   const url = state.status === "ready" ? state.url : null
 

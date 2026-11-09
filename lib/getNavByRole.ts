@@ -3,6 +3,8 @@ import { adminNavLinks, healthStaffNavLinks } from "@/constants/nav-links"
 import { roleNavMap } from "@/constants/roleNavMap"
 import { IconChartBar } from "@tabler/icons-react"
 
+type AdminNavItem = { slug: string; module?: string; superAdminOnly?: boolean }
+
 // Power BI assessment report. Admins reach it from the admin sidebar
 // (/admin/analytics); on the staff side only directors get the link. The
 // backend enforces the same rule (GET /analytics/powerbi).
@@ -29,11 +31,11 @@ function staffNav(user?: User | null) {
     if (position === "SUPER_ADMIN") return adminNavLinks
 
     if (position === "ADMIN") {
-      return adminNavLinks.filter((item) => !(item as any).superAdminOnly)
+      return adminNavLinks.filter((item: AdminNavItem) => !item.superAdminOnly)
     }
 
     // MODERATOR: dashboard + items in their module list
-    return adminNavLinks.filter((item: any) => {
+    return adminNavLinks.filter((item: AdminNavItem) => {
       if (item.superAdminOnly) return false
       if (item.slug === "/admin/dashboard") return true
       if (!item.module) return false

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Clock } from "lucide-react"
 import { useForm } from "react-hook-form"
@@ -27,7 +27,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import api from "@/lib/api"
-import { apiErrorMessage } from "@/lib/api-error"
+import { apiErrorMessage, apiErrorStatus } from "@/lib/api-error"
 import { useAuth } from "@/store/useAuth"
 import { AuthShell, authLabel, stagger } from "./AuthShell"
 import { PasswordInput } from "./PasswordInput"
@@ -40,10 +40,29 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>
 
+/** Only same-site paths, so `?next=` can't send someone to another website. */
+function safeNext(next: string | null): string | null {
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : null
+}
+
+const SIGNED_OUT_REASONS: Record<string, string> = {
+  expired: "Your session has ended. Please sign in again.",
+  inactive: "Your account is no longer active. Please contact an administrator.",
+}
+
 export const LoginForm = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { setUser } = useAuth()
   const [pendingOpen, setPendingOpen] = useState(false)
+  const reason = searchParams.get("reason")
+  const next = safeNext(searchParams.get("next"))
+
+  // Say why the person landed here, once.
+  useEffect(() => {
+    const msg = reason ? SIGNED_OUT_REASONS[reason] : null
+    if (msg) toast.info(msg, { id: "signed-out" })
+  }, [reason])
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -62,19 +81,21 @@ export const LoginForm = () => {
         return
       }
 
-      localStorage.setItem("access_token", data.accessToken)
+      // The session lives in httpOnly cookies now; drop any token an older
+      // version of the app left behind.
+      localStorage.removeItem("access_token")
       setUser(data.user)
 
-      if (data.user.accountStatus === "PENDING") {
+      const isAdmin = data.user.roles?.some((r: { name: string }) => r.name === "ADMIN")
+      router.replace(next ?? (isAdmin ? "/admin/dashboard" : "/dashboard"))
+    } catch (err) {
+      const message = apiErrorMessage(err, "Login failed. Please try again.")
+      // The API refuses accounts awaiting approval with a 401 naming the status.
+      if (apiErrorStatus(err) === 401 && /PENDING/.test(message)) {
         setPendingOpen(true)
         return
       }
-
-      toast.success("Login successful")
-      const isAdmin = data.user.roles?.some((r: { name: string }) => r.name === "ADMIN")
-      router.push(isAdmin ? "/admin/dashboard" : "/dashboard")
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Login failed. Please try again."))
+      toast.error(message)
     }
   }
 

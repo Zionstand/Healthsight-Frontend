@@ -1,18 +1,18 @@
 import { Outfit } from "next/font/google"
 
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
-import { Toaster } from "@/components/ui/sonner"
-import { TooltipProvider } from "@/components/ui/tooltip"
+import { Providers } from "@/components/providers"
 import {
   SITE_DESCRIPTION,
   SITE_KEYWORDS,
   SITE_LONG_NAME,
   SITE_NAME,
   SITE_URL,
+  ORG_NAME,
+  THEME_COLOR,
 } from "@/lib/seo"
 
 export const metadata: Metadata = {
@@ -21,14 +21,17 @@ export const metadata: Metadata = {
   description: SITE_DESCRIPTION,
   keywords: SITE_KEYWORDS,
   applicationName: SITE_NAME,
-  authors: [{ name: "Lagos State Health District I" }],
-  creator: "Lagos State Health District I",
+  authors: [{ name: ORG_NAME }],
+  creator: ORG_NAME,
+  publisher: ORG_NAME,
+  category: "health",
+  // Stop iOS turning numbers in patient records into tap-to-call links.
+  formatDetection: { telephone: false, email: false, address: false },
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
     title: SITE_LONG_NAME,
     description: SITE_DESCRIPTION,
-    url: SITE_URL,
     locale: "en_NG",
   },
   twitter: {
@@ -36,8 +39,23 @@ export const metadata: Metadata = {
     title: SITE_LONG_NAME,
     description: SITE_DESCRIPTION,
   },
-  icons: { icon: "/favicon.ico" },
-  robots: { index: true, follow: true },
+  // Icons come from the file conventions: app/favicon.ico, app/icon.png,
+  // app/apple-icon.png. The web manifest is app/manifest.ts.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+  ...(process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION && {
+    verification: { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION },
+  }),
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: THEME_COLOR },
+    { media: "(prefers-color-scheme: dark)", color: "#063242" },
+  ],
 }
 
 // Outfit is the single typeface for the whole site. Every font token in
@@ -63,10 +81,7 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ThemeProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </ThemeProvider>
-        <Toaster />
+        <Providers>{children}</Providers>
       </body>
     </html>
   )
